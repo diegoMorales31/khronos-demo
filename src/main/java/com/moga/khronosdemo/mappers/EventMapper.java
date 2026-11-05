@@ -2,8 +2,8 @@ package com.moga.khronosdemo.mappers;
 
 import com.moga.khronosdemo.dtos.request.EventRequestDTO;
 import com.moga.khronosdemo.dtos.response.EventResponseDTO;
-import com.moga.khronosdemo.entities.Establishment;
 import com.moga.khronosdemo.entities.Event;
+import com.moga.khronosdemo.entities.Zone;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -13,30 +13,33 @@ public class EventMapper {
         if (event == null) {
             return null;
         }
+        Zone zone = event.getZone();
         return new EventResponseDTO(
                 event.getId(),
+                event.getTitle(),
                 event.getDateTime(),
-                event.getWorkZone(),
+                zone != null ? zone.getId() : null,
+                zone != null ? zone.getName() : null,
                 event.getPeopleNumber(),
                 event.getEstablishment() != null ? event.getEstablishment().getId() : null,
-                event.getObservation()
+                event.getDescription()
         );
     }
 
-    public Event toEntity(EventRequestDTO request, Establishment establishment) {
+    public Event toEntity(EventRequestDTO request, Zone zone) {
         if (request == null) {
             return null;
         }
         Event event = new Event();
-        updateEntity(event, request, establishment);
+        updateEntity(event, request, zone);
         return event;
     }
 
-    public void updateEntity(Event event, EventRequestDTO request, Establishment establishment) {
+    public void updateEntity(Event event, EventRequestDTO request, Zone zone) {
+        event.setTitle(request.title());
         event.setDateTime(request.dateTime());
-        event.setWorkZone(request.workZone());
+        event.setZone(zone);
         event.setPeopleNumber(request.peopleNumber());
-        event.setEstablishment(establishment);
-        event.setObservation(request.observation());
+        event.setDescription(request.description());
     }
 }

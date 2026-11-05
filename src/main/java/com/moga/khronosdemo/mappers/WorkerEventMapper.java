@@ -16,7 +16,7 @@ public class WorkerEventMapper {
         }
         return new WorkerEventResponseDTO(
                 workerEvent.getId(),
-                workerEvent.getWorker() != null ? workerEvent.getWorker().getId() : null,
+                workerEvent.getWorker() != null ? workerEvent.getWorker().getUserId() : null,
                 workerEvent.getEvent() != null ? workerEvent.getEvent().getId() : null
         );
     }
