@@ -3,7 +3,6 @@ package com.moga.khronosdemo.entities;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,20 +14,17 @@ public class Event {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
 
+    private String title;
+
     private LocalDateTime dateTime;
-
-    private LocalTime endTime;
-
-    @Enumerated(EnumType.STRING)
-    private WorkZone workZone;
 
     private Integer peopleNumber;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "establishment_id")
-    private Establishment establishment;
+    private String description;
 
-    private String observation;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "zone_id", nullable = false)
+    private Zone zone;
 
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<WorkerEvent> workerEvents = new ArrayList<>();
@@ -36,14 +32,13 @@ public class Event {
     public Event() {
     }
 
-    public Event(LocalDateTime dateTime, LocalTime endTime, WorkZone workZone,
-                 Integer peopleNumber, Establishment establishment, String observation) {
+    public Event(String title, LocalDateTime dateTime,
+                 Integer peopleNumber, Zone zone, String description) {
+        this.title = title;
         this.dateTime = dateTime;
-        this.endTime = endTime;
-        this.workZone = workZone;
         this.peopleNumber = peopleNumber;
-        this.establishment = establishment;
-        this.observation = observation;
+        this.zone = zone;
+        this.description = description;
     }
 
     public Long getId() {
@@ -54,28 +49,20 @@ public class Event {
         this.id = id;
     }
 
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
     public LocalDateTime getDateTime() {
         return dateTime;
     }
 
     public void setDateTime(LocalDateTime dateTime) {
         this.dateTime = dateTime;
-    }
-
-    public LocalTime getEndTime() {
-        return endTime;
-    }
-
-    public void setEndTime(LocalTime endTime) {
-        this.endTime = endTime;
-    }
-
-    public WorkZone getWorkZone() {
-        return workZone;
-    }
-
-    public void setWorkZone(WorkZone workZone) {
-        this.workZone = workZone;
     }
 
     public Integer getPeopleNumber() {
@@ -86,28 +73,32 @@ public class Event {
         this.peopleNumber = peopleNumber;
     }
 
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public Zone getZone() {
+        return zone;
+    }
+
+    public void setZone(Zone zone) {
+        this.zone = zone;
+    }
+
     public Establishment getEstablishment() {
-        return establishment;
-    }
-
-    public void setEstablishment(Establishment establishment) {
-        this.establishment = establishment;
-    }
-
-    public String getObservation() {
-        return observation;
-    }
-
-    public void setObservation(String observation) {
-        this.observation = observation;
-    }
-
-    public void setWorkerEvents(List<WorkerEvent> workerEvents) {
-        this.workerEvents = workerEvents;
+        return zone != null ? zone.getEstablishment() : null;
     }
 
     public List<WorkerEvent> getWorkerEvents() {
         return workerEvents;
+    }
+
+    public void setWorkerEvents(List<WorkerEvent> workerEvents) {
+        this.workerEvents = workerEvents;
     }
 
 }

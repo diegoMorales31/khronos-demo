@@ -13,28 +13,28 @@ public class WorkerShift {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "worker_id")
-    private Worker worker;
-
     private LocalDate date;
 
     private LocalTime startTime;
     private LocalTime endTime;
 
-    @Enumerated(EnumType.STRING)
-    private WorkZone eventZone;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "worker_id")
+    private Worker worker;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "zone_id", nullable = false)
+    private Zone zone;
 
     public WorkerShift() {
     }
 
-    public WorkerShift(Long id, Worker worker, LocalDate date, LocalTime startTime, LocalTime endTime, WorkZone eventZone) {
-        this.id = id;
+    public WorkerShift(Worker worker, Zone zone, LocalDate date, LocalTime startTime, LocalTime endTime) {
         this.worker = worker;
+        this.zone = zone;
         this.date = date;
         this.startTime = startTime;
         this.endTime = endTime;
-        this.eventZone = eventZone;
     }
 
     public Long getId() {
@@ -77,12 +77,11 @@ public class WorkerShift {
         this.endTime = endTime;
     }
 
-    public WorkZone getEventZone() {
-        return eventZone;
+    public Zone getZone() {
+        return zone;
     }
 
-    public void setEventZone(WorkZone eventZone) {
-        this.eventZone = eventZone;
+    public void setZone(Zone zone) {
+        this.zone = zone;
     }
-
 }

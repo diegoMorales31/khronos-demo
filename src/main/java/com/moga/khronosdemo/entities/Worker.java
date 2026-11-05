@@ -10,39 +10,40 @@ import java.util.List;
 public class Worker {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
-    private Long id;
+    private Long userId;
 
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", unique = true)
+    @OneToOne(fetch = FetchType.LAZY, optional = false, cascade = CascadeType.REMOVE)
+    @MapsId
+    @JoinColumn(name = "user_id")
     private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "establishment_id", nullable = false)
+    private Establishment establishment;
 
     @Column(nullable = false)
     private Boolean isActive = true;
 
-    @Enumerated(EnumType.STRING)
-    private WorkZone workZone;
-
     @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<WorkerShift> workerShifts = new ArrayList<>();
 
-    @OneToMany(mappedBy = "worker")
+    @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<WorkerEvent> workerEvents = new ArrayList<>();
 
     public Worker() {
     }
 
-    public Worker(User user, WorkZone workZone) {
+    public Worker(User user, Establishment establishment) {
         this.user = user;
-        this.workZone = workZone;
+        this.establishment = establishment;
     }
 
-    public Long getId() {
-        return id;
+    public Long getUserId() {
+        return userId;
     }
 
-    public void setId(Long id) {
-        this.id = id;
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     public User getUser() {
@@ -53,20 +54,20 @@ public class Worker {
         this.user = user;
     }
 
+    public Establishment getEstablishment() {
+        return establishment;
+    }
+
+    public void setEstablishment(Establishment establishment) {
+        this.establishment = establishment;
+    }
+
     public Boolean getActive() {
         return isActive;
     }
 
     public void setActive(Boolean active) {
         isActive = active;
-    }
-
-    public WorkZone getWorkZone() {
-        return workZone;
-    }
-
-    public void setWorkZone(WorkZone workZone) {
-        this.workZone = workZone;
     }
 
     public List<WorkerShift> getWorkerShifts() {

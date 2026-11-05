@@ -28,22 +28,18 @@ public class User {
     @Column(nullable = false)
     private Boolean isAdmin = false;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "establishment_id")
-    private Establishment establishment;
 
     public User() {
     }
 
     public User(String username, String password, String firstName, String lastName,
-                String phoneNumber, String email, Establishment establishment) {
+                String phoneNumber, String email) {
         this.username = username;
         this.password = password;
         this.firstName = firstName;
         this.lastName = lastName;
         this.phoneNumber = phoneNumber;
         this.email = email;
-        this.establishment = establishment;
     }
 
     public Long getId() {
@@ -110,11 +106,4 @@ public class User {
         isAdmin = admin;
     }
 
-    public Establishment getEstablishment() {
-        return establishment;
-    }
-
-    public void setEstablishment(Establishment establishment) {
-        this.establishment = establishment;
-    }
 }

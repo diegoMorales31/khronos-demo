@@ -6,9 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name="establishments",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"establishmentAddress"}))
-
+@Table(name="establishments")
 public class Establishment {
 
     @Id
@@ -16,33 +14,27 @@ public class Establishment {
     private Long id;
 
     private String establishmentName;
+
+    @Column(unique = true)
     private String establishmentAddress;
-    private String ownerName;
-    private String ownerEmail;
-    private String ownerPhone;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner;
 
     @OneToMany(mappedBy = "establishment", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Event> events = new ArrayList<>();
+    private List<Zone> zones = new ArrayList<>();
 
-    @OneToMany(mappedBy = "establishment")
-    private List<User> users = new ArrayList<>();
+    @OneToMany(mappedBy = "establishment", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Worker> workers = new ArrayList<>();
 
     public Establishment() {
     }
 
-    public Establishment(
-            Long id, String establishmentName, String establishmentAddress,
-            String ownerName, String ownerEmail, String ownerPhone,
-            List<Event> events, List<User> users
-    ) {
-        this.id = id;
+    public Establishment(String establishmentName, String establishmentAddress, User owner) {
         this.establishmentName = establishmentName;
         this.establishmentAddress = establishmentAddress;
-        this.ownerName = ownerName;
-        this.ownerEmail = ownerEmail;
-        this.ownerPhone = ownerPhone;
-        this.events = events;
-        this.users = users;
+        this.owner = owner;
     }
 
     public Long getId() {
@@ -69,35 +61,19 @@ public class Establishment {
         this.establishmentAddress = establishmentAddress;
     }
 
-    public String getOwnerName() {
-        return ownerName;
+    public User getOwner() {
+        return owner;
     }
 
-    public void setOwnerName(String ownerName) {
-        this.ownerName = ownerName;
+    public void setOwner(User owner) {
+        this.owner = owner;
     }
 
-    public String getOwnerEmail() {
-        return ownerEmail;
+    public List<Zone> getZones() {
+        return zones;
     }
 
-    public void setOwnerEmail(String ownerEmail) {
-        this.ownerEmail = ownerEmail;
-    }
-
-    public String getOwnerPhone() {
-        return ownerPhone;
-    }
-
-    public void setOwnerPhone(String ownerPhone) {
-        this.ownerPhone = ownerPhone;
-    }
-
-    public List<Event> getEvents() {
-        return events;
-    }
-
-    public List<User> getUsers() {
-        return users;
+    public List<Worker> getWorkers() {
+        return workers;
     }
 }
