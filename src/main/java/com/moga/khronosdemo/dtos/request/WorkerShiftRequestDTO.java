@@ -1,6 +1,5 @@
 package com.moga.khronosdemo.dtos.request;
 
-import com.moga.khronosdemo.entities.WorkZone;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
@@ -20,6 +19,6 @@ public record WorkerShiftRequestDTO(
         LocalTime endTime,
 
         @NotNull
-        WorkZone eventZone
+        Long zoneId
 ) {
 }

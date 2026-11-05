@@ -1,7 +1,5 @@
 package com.moga.khronosdemo.dtos.response;
 
-import com.moga.khronosdemo.entities.WorkZone;
-
 import java.time.LocalDate;
 import java.time.LocalTime;
 
@@ -11,6 +9,7 @@ public record WorkerShiftResponseDTO(
         LocalDate date,
         LocalTime startTime,
         LocalTime endTime,
-        WorkZone eventZone
+        Long zoneId,
+        String zoneName
 ) {
 }

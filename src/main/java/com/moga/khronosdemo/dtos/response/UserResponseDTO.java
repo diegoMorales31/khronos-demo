@@ -7,7 +7,6 @@ public record UserResponseDTO(
         String lastName,
         String phoneNumber,
         String email,
-        Boolean isAdmin,
-        Long establishmentId
+        Boolean isAdmin
 ) {
 }

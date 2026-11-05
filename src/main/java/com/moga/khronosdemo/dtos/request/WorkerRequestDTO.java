@@ -1,6 +1,5 @@
 package com.moga.khronosdemo.dtos.request;
 
-import com.moga.khronosdemo.entities.WorkZone;
 import jakarta.validation.constraints.NotNull;
 
 public record WorkerRequestDTO(
@@ -8,9 +7,9 @@ public record WorkerRequestDTO(
         Long userId,
 
         @NotNull
-        Boolean isActive,
+        Long establishmentId,
 
         @NotNull
-        WorkZone workZone
+        Boolean isActive
 ) {
 }

@@ -1,15 +1,15 @@
 package com.moga.khronosdemo.dtos.response;
 
-import com.moga.khronosdemo.entities.WorkZone;
-
 import java.time.LocalDateTime;
 
 public record EventResponseDTO(
         Long id,
+        String title,
         LocalDateTime dateTime,
-        WorkZone workZone,
+        Long zoneId,
+        String zoneName,
         Integer peopleNumber,
         Long establishmentId,
-        String observation
+        String description
 ) {
 }
