@@ -9,7 +9,6 @@ public record WorkerShiftResponseDTO(
         LocalDate date,
         LocalTime startTime,
         LocalTime endTime,
-        Long zoneId,
-        String zoneName
+        Long zoneId
 ) {
 }
