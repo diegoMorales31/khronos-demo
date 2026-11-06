@@ -3,6 +3,7 @@ package com.moga.khronosdemo.mappers;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
 import com.moga.khronosdemo.dtos.response.UserResponseDTO;
+import com.moga.khronosdemo.entities.Role;
 import com.moga.khronosdemo.entities.User;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -27,15 +28,16 @@ public class UserMapper {
                 user.getLastName(),
                 user.getPhoneNumber(),
                 user.getEmail(),
-                user.getAdmin()
+                user.getRole()
         );
     }
 
-    public User toEntity(UserRequestDTO request) {
+    public User toEntity(UserRequestDTO request, Role role) {
         if (request == null) {
             return null;
         }
         User user = new User();
+        user.setRole(role);
         user.setUsername(request.username());
         user.setPassword(passwordEncoder.encode(request.password()));
         user.setFirstName(request.firstName());

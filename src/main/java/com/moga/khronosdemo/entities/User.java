@@ -25,9 +25,9 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Boolean isAdmin = false;
-
+    private Role role = Role.WORKER;
 
     public User() {
     }
@@ -98,12 +98,12 @@ public class User {
         this.email = email;
     }
 
-    public Boolean getAdmin() {
-        return isAdmin;
+    public Role getRole() {
+        return role;
     }
 
-    public void setAdmin(Boolean admin) {
-        isAdmin = admin;
+    public void setRole(Role role) {
+        this.role = role;
     }
 
 }
