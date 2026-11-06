@@ -13,6 +13,8 @@ public interface WorkerShiftService {
 
     List<WorkerShiftResponseDTO> findAll();
 
+    List<WorkerShiftResponseDTO> findByOwner(Long ownerId);
+
     List<WorkerShiftResponseDTO> findByWorker(Long workerId);
 
     List<WorkerShiftResponseDTO> findByZone(Long zoneId);

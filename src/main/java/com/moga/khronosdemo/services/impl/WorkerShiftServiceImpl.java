@@ -57,6 +57,14 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<WorkerShiftResponseDTO> findByOwner(Long ownerId) {
+        return workerShiftRepository.findByWorker_Establishment_Owner_IdOrderByDateAscStartTimeAsc(ownerId).stream()
+                .map(workerShiftMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<WorkerShiftResponseDTO> findByWorker(Long workerId) {
         return workerShiftRepository.findByWorker_UserId(workerId).stream().map(workerShiftMapper::toResponse).toList();
     }

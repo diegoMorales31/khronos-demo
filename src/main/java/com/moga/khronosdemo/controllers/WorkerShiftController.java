@@ -33,6 +33,12 @@ public class WorkerShiftController {
         return workerShiftService.findAll();
     }
 
+    @GetMapping("/owner/{ownerId}")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or (hasRole('OWNER') and @access.isSelf(#ownerId))")
+    public List<WorkerShiftResponseDTO> findByOwner(@PathVariable Long ownerId) {
+        return workerShiftService.findByOwner(ownerId);
+    }
+
     @GetMapping("/worker/{workerId}")
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.isSelf(#workerId) or @access.ownsWorker(#workerId)")
     public List<WorkerShiftResponseDTO> findByWorker(@PathVariable Long workerId) {

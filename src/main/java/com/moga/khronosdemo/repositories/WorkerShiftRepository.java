@@ -10,4 +10,6 @@ public interface WorkerShiftRepository extends JpaRepository<WorkerShift, Long> 
     List<WorkerShift> findByWorker_UserId(Long workerId);
 
     List<WorkerShift> findByZone_Id(Long zoneId);
+
+    List<WorkerShift> findByWorker_Establishment_Owner_IdOrderByDateAscStartTimeAsc(Long ownerId);
 }
