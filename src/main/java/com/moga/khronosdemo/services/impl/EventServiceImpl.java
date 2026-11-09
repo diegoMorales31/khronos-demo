@@ -61,14 +61,22 @@ public class EventServiceImpl implements EventService {
 
     @Override
     public EventResponseDTO update(Long id, EventRequestDTO request) {
+
         Event event = getEvent(id);
         Zone zone = getZone(request.zoneId());
-        boolean changesEstablishment = !zone.getEstablishment().getId().equals(event.getEstablishment().getId());
+
+        boolean changesEstablishment = !zone.getEstablishment()
+                .getId()
+                .equals(event.getEstablishment().getId());
+
         if (changesEstablishment && !event.getWorkerEvents().isEmpty()) {
             throw new BusinessRuleException("Cannot move an event with assigned workers to another establishment");
         }
+
         eventMapper.updateEntity(event, request, zone);
+
         return eventMapper.toResponse(event);
+
     }
 
     @Override

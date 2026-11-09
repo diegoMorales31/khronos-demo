@@ -32,13 +32,17 @@ public class ZoneServiceImpl implements ZoneService {
 
     @Override
     public ZoneResponseDTO create(ZoneRequestDTO request) {
+
         Establishment establishment = establishmentRepository.findById(request.establishmentId())
                 .orElseThrow(() -> new ResourceNotFoundException("Establishment", request.establishmentId()));
+
         if (zoneRepository.existsByNameAndEstablishment_Id(request.name(), request.establishmentId())) {
             throw new BusinessRuleException("A zone with that name already exists in this establishment");
         }
+
         Zone zone = zoneMapper.toEntity(request, establishment);
         return zoneMapper.toResponse(zoneRepository.save(zone));
+
     }
 
     @Override
@@ -61,16 +65,20 @@ public class ZoneServiceImpl implements ZoneService {
 
     @Override
     public ZoneResponseDTO update(Long id, ZoneRequestDTO request) {
+
         Zone zone = getZone(id);
         Establishment establishment = zone.getEstablishment();
+
         if (!establishment.getId().equals(request.establishmentId())) {
             throw new BusinessRuleException("A zone cannot be moved to another establishment");
         }
         if (zoneRepository.existsByNameAndEstablishment_IdAndIdNot(request.name(), request.establishmentId(), id)) {
             throw new BusinessRuleException("A zone with that name already exists in this establishment");
         }
+
         zoneMapper.updateEntity(zone, request, establishment);
         return zoneMapper.toResponse(zone);
+
     }
 
     @Override

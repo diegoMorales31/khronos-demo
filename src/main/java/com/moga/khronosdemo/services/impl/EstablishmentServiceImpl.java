@@ -60,12 +60,17 @@ public class EstablishmentServiceImpl implements EstablishmentService {
 
     @Override
     public EstablishmentResponseDTO update(Long id, EstablishmentRequestDTO request) {
+
         Establishment establishment = getEstablishment(id);
+
         if (establishmentRepository.existsByEstablishmentAddressAndIdNot(request.establishmentAddress(), id)) {
             throw new BusinessRuleException("An establishment already exists at that address");
+
         }
         establishmentMapper.updateEntity(establishment, request, getOwner(request.ownerId()));
+
         return establishmentMapper.toResponse(establishment);
+
     }
 
     @Override
@@ -79,11 +84,16 @@ public class EstablishmentServiceImpl implements EstablishmentService {
     }
 
     private User getOwner(Long ownerId) {
+
         User owner = userRepository.findById(ownerId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", ownerId));
+
         if (owner.getRole() != Role.OWNER) {
             throw new BusinessRuleException("The owner of an establishment must have the OWNER role");
+
         }
+
         return owner;
+
     }
 }
