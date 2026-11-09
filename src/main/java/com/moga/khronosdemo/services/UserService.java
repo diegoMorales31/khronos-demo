@@ -4,14 +4,15 @@ import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
 import com.moga.khronosdemo.dtos.response.UserResponseDTO;
+import com.moga.khronosdemo.entities.Role;
 
 import java.util.List;
 
 public interface UserService {
 
-    UserResponseDTO create(UserRequestDTO request);
+    UserResponseDTO createWorker(UserRequestDTO request);
 
-    UserResponseDTO createOwner(UserRequestDTO request);
+    UserResponseDTO createUser(UserRequestDTO request, Role role);
 
     UserResponseDTO findById(Long id);
 

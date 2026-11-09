@@ -4,6 +4,7 @@ import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
 import com.moga.khronosdemo.dtos.response.UserResponseDTO;
+import com.moga.khronosdemo.entities.Role;
 import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.UserService;
 import jakarta.validation.Valid;
@@ -29,18 +30,18 @@ public class UserController {
         return userService.findById(principal.getId());
     }
 
-    @PostMapping
+    @PostMapping("/create")
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'OWNER')")
-    public UserResponseDTO create(@Valid @RequestBody UserRequestDTO request) {
-        return userService.create(request);
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN')")
+    public UserResponseDTO createUser(@Valid @RequestBody UserRequestDTO request, @RequestParam Role role) {
+        return userService.createUser(request, role);
     }
 
-    @PostMapping("/owners")
+    @PostMapping("/create/worker")
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
-    public UserResponseDTO createOwner(@Valid @RequestBody UserRequestDTO request) {
-        return userService.createOwner(request);
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'OWNER')")
+    public UserResponseDTO createWorker(@Valid @RequestBody UserRequestDTO request) {
+        return userService.createWorker(request);
     }
 
     @GetMapping

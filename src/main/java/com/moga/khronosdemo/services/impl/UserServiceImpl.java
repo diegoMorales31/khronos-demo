@@ -40,27 +40,33 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserResponseDTO create(UserRequestDTO request) {
-        return createWithRole(request, Role.WORKER);
+    public UserResponseDTO createUser(UserRequestDTO request, Role role) {
+        return createWithRole(request, role);
     }
 
     @Override
-    public UserResponseDTO createOwner(UserRequestDTO request) {
-        return createWithRole(request, Role.OWNER);
+    public UserResponseDTO createWorker(UserRequestDTO request) {
+        return createWithRole(request, Role.WORKER);
     }
 
     private UserResponseDTO createWithRole(UserRequestDTO request, Role role) {
+
         if (userRepository.existsByUsername(request.username())) {
             throw new BusinessRuleException("Username already in use");
         }
+
         if (userRepository.existsByEmail(request.email())) {
             throw new BusinessRuleException("Email already in use");
         }
+
         if (request.phoneNumber() != null && userRepository.existsByPhoneNumber(request.phoneNumber())) {
             throw new BusinessRuleException("Phone number already in use");
         }
+
         User user = userMapper.toEntity(request, role);
+
         return userMapper.toResponse(userRepository.save(user));
+
     }
 
     @Override
@@ -93,26 +99,34 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void changePassword(Long id, ChangePasswordRequestDTO request) {
+
         User user = getUser(id);
+
         if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
             throw new BusinessRuleException("Current password is incorrect");
         }
+
         user.setPassword(passwordEncoder.encode(request.newPassword()));
+
     }
 
     @Override
     public void delete(Long id) {
+
         User user = getUser(id);
         if (user.getRole() == Role.PLATFORM_ADMIN) {
             throw new BusinessRuleException("Platform admins cannot be deleted through the API");
         }
+
         if (user.getRole() == Role.OWNER) {
             establishmentRepository.deleteAll(establishmentRepository.findByOwner_Id(id));
         }
+
         workerRepository.findById(id).ifPresentOrElse(
                 workerRepository::delete,
                 () -> userRepository.delete(user)
         );
+
     }
 
     private User getUser(Long id) {
