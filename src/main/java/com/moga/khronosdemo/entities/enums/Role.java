@@ -1,4 +1,4 @@
-package com.moga.khronosdemo.entities;
+package com.moga.khronosdemo.entities.enums;
 
 public enum Role {
     PLATFORM_ADMIN,

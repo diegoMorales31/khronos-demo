@@ -1,5 +1,6 @@
 package com.moga.khronosdemo.entities;
 
+import com.moga.khronosdemo.entities.enums.Role;
 import jakarta.persistence.*;
 
 @Entity

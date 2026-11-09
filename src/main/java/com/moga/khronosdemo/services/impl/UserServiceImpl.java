@@ -4,7 +4,7 @@ import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
 import com.moga.khronosdemo.dtos.response.UserResponseDTO;
-import com.moga.khronosdemo.entities.Role;
+import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.entities.User;
 import com.moga.khronosdemo.exceptions.BusinessRuleException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;

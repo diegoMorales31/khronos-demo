@@ -3,7 +3,7 @@ package com.moga.khronosdemo.services.impl;
 import com.moga.khronosdemo.dtos.request.WorkerRequestDTO;
 import com.moga.khronosdemo.dtos.response.WorkerResponseDTO;
 import com.moga.khronosdemo.entities.Establishment;
-import com.moga.khronosdemo.entities.Role;
+import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.entities.User;
 import com.moga.khronosdemo.entities.Worker;
 import com.moga.khronosdemo.exceptions.BusinessRuleException;

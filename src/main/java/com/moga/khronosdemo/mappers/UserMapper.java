@@ -3,7 +3,7 @@ package com.moga.khronosdemo.mappers;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
 import com.moga.khronosdemo.dtos.response.UserResponseDTO;
-import com.moga.khronosdemo.entities.Role;
+import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.entities.User;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;

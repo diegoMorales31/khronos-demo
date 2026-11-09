@@ -1,6 +1,6 @@
 package com.moga.khronosdemo.dtos.response;
 
-import com.moga.khronosdemo.entities.Role;
+import com.moga.khronosdemo.entities.enums.Role;
 
 public record UserResponseDTO(
         Long id,
