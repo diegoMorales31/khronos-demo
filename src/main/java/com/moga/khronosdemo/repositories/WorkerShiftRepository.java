@@ -20,9 +20,22 @@ public interface WorkerShiftRepository extends JpaRepository<WorkerShift, Long> 
     @Query("""
             select count(s) > 0 from WorkerShift s
             where s.worker.userId = :workerId
+              and s.zone.id = :zoneId
               and s.date = :date
-              and s.startTime <= :endTime
-              and s.endTime >= :startTime
+              and s.startTime <= :eventTime
+              and s.endTime > :eventTime
+            """)
+    boolean existsShiftCoveringEvent(@Param("workerId") Long workerId,
+                                     @Param("zoneId") Long zoneId,
+                                     @Param("date") LocalDate date,
+                                     @Param("eventTime") LocalTime eventTime);
+
+    @Query("""
+            select count(s) > 0 from WorkerShift s
+            where s.worker.userId = :workerId
+              and s.date = :date
+              and s.startTime < :endTime
+              and s.endTime > :startTime
               and (:excludeId is null or s.id <> :excludeId)
             """)
     boolean existsOverlappingShift(@Param("workerId") Long workerId,
