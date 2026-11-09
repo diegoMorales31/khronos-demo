@@ -36,10 +36,14 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
 
     @Override
     public WorkerShiftResponseDTO create(WorkerShiftRequestDTO request) {
+
         Worker worker = getWorker(request.workerId());
         Zone zone = getZone(request.zoneId());
-        validate(request, worker, zone);
+
+        validate(request, worker, zone, null);
+
         WorkerShift workerShift = workerShiftMapper.toEntity(request, worker, zone);
+
         return workerShiftMapper.toResponse(workerShiftRepository.save(workerShift));
     }
 
@@ -58,31 +62,52 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
     @Override
     @Transactional(readOnly = true)
     public List<WorkerShiftResponseDTO> findByOwner(Long ownerId) {
-        return workerShiftRepository.findByWorker_Establishment_Owner_IdOrderByDateAscStartTimeAsc(ownerId).stream()
+        /* return workerShiftRepository.findByWorker_Establishment_Owner_IdOrderByDateAscStartTimeAsc(ownerId).stream()
                 .map(workerShiftMapper::toResponse)
                 .toList();
+        */
+
+        return workerShiftRepository.findAll().stream().filter(w ->
+                        w.getWorker().getEstablishment().getOwner().getId()
+                .equals(ownerId))
+                .map(workerShiftMapper::toResponse).toList();
+
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<WorkerShiftResponseDTO> findByWorker(Long workerId) {
-        return workerShiftRepository.findByWorker_UserId(workerId).stream().map(workerShiftMapper::toResponse).toList();
+        //return workerShiftRepository.findByWorker_UserId(workerId).stream().map(workerShiftMapper::toResponse).toList();
+
+        return workerShiftRepository.findAll().stream().filter(w -> w.getWorker().getUserId().equals(workerId)).map(workerShiftMapper::toResponse).toList();
+
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<WorkerShiftResponseDTO> findByZone(Long zoneId) {
-        return workerShiftRepository.findByZone_Id(zoneId).stream().map(workerShiftMapper::toResponse).toList();
+        //return workerShiftRepository.findByZone_Id(zoneId).stream().map(workerShiftMapper::toResponse).toList();
+
+        return workerShiftRepository.findAll().stream()
+                .filter(w -> w.getZone().getId().equals(zoneId))
+                .map(workerShiftMapper::toResponse)
+                .toList();
+
     }
 
     @Override
     public WorkerShiftResponseDTO update(Long id, WorkerShiftRequestDTO request) {
+
         WorkerShift workerShift = getWorkerShift(id);
         Worker worker = getWorker(request.workerId());
         Zone zone = getZone(request.zoneId());
-        validate(request, worker, zone);
+
+        validate(request, worker, zone, id);
+
         workerShiftMapper.updateEntity(workerShift, request, worker, zone);
+
         return workerShiftMapper.toResponse(workerShift);
+
     }
 
     @Override
@@ -90,13 +115,22 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
         workerShiftRepository.delete(getWorkerShift(id));
     }
 
-    private void validate(WorkerShiftRequestDTO request, Worker worker, Zone zone) {
+    private void validate(WorkerShiftRequestDTO request, Worker worker, Zone zone, Long shiftId) {
+
         if (!request.endTime().isAfter(request.startTime())) {
             throw new BusinessRuleException("End time must be after start time");
         }
+
         if (!zone.getEstablishment().getId().equals(worker.getEstablishment().getId())) {
             throw new BusinessRuleException("The zone does not belong to the worker's establishment");
         }
+
+        if (workerShiftRepository.existsOverlappingShift(worker.getUserId(), request.date(),
+                request.startTime(), request.endTime(), shiftId)) {
+            throw new BusinessRuleException("The worker already has a shift that overlaps with "
+                    + request.startTime() + "-" + request.endTime() + " on " + request.date());
+        }
+
     }
 
     private WorkerShift getWorkerShift(Long id) {
