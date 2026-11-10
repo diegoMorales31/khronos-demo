@@ -17,13 +17,10 @@ The API stops scheduling mistakes before they are saved. For example, it won't l
 
 ## Domain model
 
-```
-User ──(1:1)── Worker ──┬── WorkerShift ──> Zone
- │                      └── WorkerEvent ──> Event ──> Zone
- │
- └─ owns ─> Establishment ──┬── Zone
-                            └── Worker
-```
+<p align="center">
+  <img width="466" height="582" alt="image" src="https://github.com/user-attachments/assets/790faaea-37d8-4e96-8b22-af4c2697d1b8" />
+</p>
+<br>
 
 | Entity | What it represents |
 |---|---|
