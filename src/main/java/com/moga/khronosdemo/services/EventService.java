@@ -7,7 +7,7 @@ import java.util.List;
 
 public interface EventService {
 
-    EventResponseDTO create(EventRequestDTO request);
+    List<EventResponseDTO> create(List<EventRequestDTO> requests);
 
     EventResponseDTO findById(Long id);
 

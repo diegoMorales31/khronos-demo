@@ -17,6 +17,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -39,9 +40,16 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public EventResponseDTO create(EventRequestDTO request) {
-        Event event = eventMapper.toEntity(request, getZone(request.zoneId()));
-        return eventMapper.toResponse(eventRepository.save(event));
+    public List<EventResponseDTO> create(List<EventRequestDTO> requests) {
+
+        List<EventResponseDTO> created = new ArrayList<>();
+
+        for (EventRequestDTO request : requests) {
+            Event event = eventMapper.toEntity(request, getZone(request.zoneId()));
+            created.add(eventMapper.toResponse(eventRepository.save(event)));
+        }
+
+        return created;
     }
 
     @Override

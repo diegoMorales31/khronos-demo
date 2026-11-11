@@ -4,6 +4,7 @@ import com.moga.khronosdemo.dtos.request.EventRequestDTO;
 import com.moga.khronosdemo.dtos.response.EventResponseDTO;
 import com.moga.khronosdemo.services.EventService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,8 +23,8 @@ public class EventController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsZone(#request.zoneId())")
-    public EventResponseDTO create(@Valid @RequestBody EventRequestDTO request) {
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsZones(#request.![zoneId()])")
+    public List<EventResponseDTO> create(@RequestBody @NotEmpty List<@Valid EventRequestDTO> request) {
         return eventService.create(request);
     }
 

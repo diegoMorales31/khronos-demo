@@ -80,6 +80,10 @@ public class AccessGuard {
                 .orElse(false);
     }
 
+    public boolean ownsZones(Collection<Long> zoneIds) {
+        return zoneIds != null && !zoneIds.isEmpty() && zoneIds.stream().distinct().allMatch(this::ownsZone);
+    }
+
     public boolean memberOfZone(Long zoneId) {
         return zoneId != null && zoneRepository.findById(zoneId)
                 .map(zone -> memberOfEstablishment(zone.getEstablishment().getId()))

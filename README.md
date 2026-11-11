@@ -70,6 +70,7 @@ These rules are enforced in the service layer. Breaking one returns **409 Confli
 - Shifts are created **in batches**: `POST /api/worker-shifts` takes a list. The whole batch is saved in a single transaction, so if any shift is invalid, none of them are saved. The error says which shift failed, for example `Shift [1]: ...`. The list is also checked against itself, so two shifts in the same request can't overlap.
 
 **Events and assignments**
+- Events are created **in batches**: `POST /api/events` takes a list, possibly across several zones. It's all or nothing: if one item is invalid or its zone doesn't exist, no events are saved.
 - An event with workers assigned to it can't be moved to another establishment.
 - Assignments are created **in batches**: `POST /api/worker-events` takes a list, so an owner can assign one worker to several events (or several workers at once) in one request. As with shifts, it's all or nothing, and the error names the failing item, for example `Assignment [2]: ...`.
 - A worker can only be assigned to an event once, including twice in the same batch.
@@ -104,7 +105,7 @@ All endpoints are under `/api` and require authentication. The full interactive 
 | Zones | `/api/zones` | You can also list them by establishment: `/establishment/{id}`. |
 | Workers | `/api/workers` | Identified by their user ID. You can list them by establishment. |
 | Worker shifts | `/api/worker-shifts` | `POST` takes a **list**. You can list shifts by owner, worker or zone. |
-| Events | `/api/events` | You can list events by zone or establishment. |
+| Events | `/api/events` | `POST` takes a **list**. You can list events by zone or establishment. |
 | Worker events | `/api/worker-events` | `POST` takes a **list** of worker/event pairs. You can list assignments by worker or event. |
 
 ### Typical flow
@@ -120,7 +121,15 @@ All endpoints are under `/api` and require authentication. The full interactive 
      { "workerId": 6, "zoneId": 2, "date": "2026-11-14", "startTime": "17:00", "endTime": "22:00" }
    ]
    ```
-5. The owner creates events in a zone (`POST /api/events`) and assigns workers whose shifts cover them:
+5. The owner creates events:
+   ```json
+   POST /api/events
+   [
+     { "title": "Wedding dinner", "dateTime": "2026-11-14T19:00:00", "zoneId": 2, "peopleNumber": 120, "description": "Set menu" },
+     { "title": "Cocktail hour", "dateTime": "2026-11-14T21:00:00", "zoneId": 2, "peopleNumber": 80 }
+   ]
+   ```
+6. The owner assigns workers whose shifts cover those events:
    ```json
    POST /api/worker-events
    [
