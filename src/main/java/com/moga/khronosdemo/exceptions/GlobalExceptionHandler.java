@@ -12,11 +12,14 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.validation.method.ParameterErrors;
+import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -44,6 +47,24 @@ public class GlobalExceptionHandler {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
         ex.getBindingResult().getFieldErrors()
                 .forEach(error -> fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        return build(HttpStatus.BAD_REQUEST, "Validation failed", request, fieldErrors);
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ErrorResponseDTO> handleMethodValidation(HandlerMethodValidationException ex, HttpServletRequest request) {
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        for (ParameterValidationResult result : ex.getParameterValidationResults()) {
+            String prefix = result.getContainerIndex() != null
+                    ? "[" + result.getContainerIndex() + "]"
+                    : result.getMethodParameter().getParameterName();
+            if (result instanceof ParameterErrors errors) {
+                errors.getFieldErrors()
+                        .forEach(error -> fieldErrors.putIfAbsent(prefix + "." + error.getField(), error.getDefaultMessage()));
+            } else {
+                result.getResolvableErrors()
+                        .forEach(error -> fieldErrors.putIfAbsent(prefix, error.getDefaultMessage()));
+            }
+        }
         return build(HttpStatus.BAD_REQUEST, "Validation failed", request, fieldErrors);
     }
 

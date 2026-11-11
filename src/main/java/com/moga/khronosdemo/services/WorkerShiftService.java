@@ -7,7 +7,7 @@ import java.util.List;
 
 public interface WorkerShiftService {
 
-    WorkerShiftResponseDTO create(WorkerShiftRequestDTO request);
+    List<WorkerShiftResponseDTO> create(List<WorkerShiftRequestDTO> request);
 
     WorkerShiftResponseDTO findById(Long id);
 

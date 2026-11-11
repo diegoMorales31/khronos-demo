@@ -15,6 +15,7 @@ import com.moga.khronosdemo.services.WorkerShiftService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -35,16 +36,27 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
     }
 
     @Override
-    public WorkerShiftResponseDTO create(WorkerShiftRequestDTO request) {
+    public List<WorkerShiftResponseDTO> create(List<WorkerShiftRequestDTO> requests) {
 
-        Worker worker = getWorker(request.workerId());
-        Zone zone = getZone(request.zoneId());
+        List<WorkerShiftResponseDTO> created = new ArrayList<>();
 
-        validate(request, worker, zone, null);
+        for (int i = 0; i < requests.size(); i++) {
+            WorkerShiftRequestDTO request = requests.get(i);
 
-        WorkerShift workerShift = workerShiftMapper.toEntity(request, worker, zone);
+            Worker worker = getWorker(request.workerId());
+            Zone zone = getZone(request.zoneId());
 
-        return workerShiftMapper.toResponse(workerShiftRepository.save(workerShift));
+            try {
+                validate(request, worker, zone, null);
+            } catch (BusinessRuleException ex) {
+                throw new BusinessRuleException("Shift [" + i + "]: " + ex.getMessage());
+            }
+
+            WorkerShift workerShift = workerShiftRepository.save(workerShiftMapper.toEntity(request, worker, zone));
+            created.add(workerShiftMapper.toResponse(workerShift));
+        }
+
+        return created;
     }
 
     @Override

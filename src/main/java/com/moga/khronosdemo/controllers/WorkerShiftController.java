@@ -4,6 +4,7 @@ import com.moga.khronosdemo.dtos.request.WorkerShiftRequestDTO;
 import com.moga.khronosdemo.dtos.response.WorkerShiftResponseDTO;
 import com.moga.khronosdemo.services.WorkerShiftService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,8 +23,8 @@ public class WorkerShiftController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsWorker(#request.workerId())")
-    public WorkerShiftResponseDTO create(@Valid @RequestBody WorkerShiftRequestDTO request) {
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsWorkers(#request.![workerId()])")
+    public List<WorkerShiftResponseDTO> create(@RequestBody @NotEmpty List<@Valid WorkerShiftRequestDTO> request) {
         return workerShiftService.create(request);
     }
 

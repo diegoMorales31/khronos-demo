@@ -11,6 +11,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+
 @Component("access")
 @Transactional(readOnly = true)
 public class AccessGuard {
@@ -100,6 +102,10 @@ public class AccessGuard {
         return workerId != null && workerRepository.findById(workerId)
                 .map(worker -> ownsEstablishment(worker.getEstablishment().getId()))
                 .orElse(false);
+    }
+
+    public boolean ownsWorkers(Collection<Long> workerIds) {
+        return workerIds != null && !workerIds.isEmpty() && workerIds.stream().distinct().allMatch(this::ownsWorker);
     }
 
     public boolean ownsShift(Long shiftId) {
