@@ -4,6 +4,7 @@ import com.moga.khronosdemo.dtos.request.WorkerEventRequestDTO;
 import com.moga.khronosdemo.dtos.response.WorkerEventResponseDTO;
 import com.moga.khronosdemo.services.WorkerEventService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,8 +23,8 @@ public class WorkerEventController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('PLATFORM_ADMIN') or (@access.ownsWorker(#request.workerId()) and @access.ownsEvent(#request.eventId()))")
-    public WorkerEventResponseDTO create(@Valid @RequestBody WorkerEventRequestDTO request) {
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or (@access.ownsWorkers(#request.![workerId()]) and @access.ownsEvents(#request.![eventId()]))")
+    public List<WorkerEventResponseDTO> create(@RequestBody @NotEmpty List<@Valid WorkerEventRequestDTO> request) {
         return workerEventService.create(request);
     }
 

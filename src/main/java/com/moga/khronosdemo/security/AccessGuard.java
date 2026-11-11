@@ -108,6 +108,10 @@ public class AccessGuard {
         return workerIds != null && !workerIds.isEmpty() && workerIds.stream().distinct().allMatch(this::ownsWorker);
     }
 
+    public boolean ownsEvents(Collection<Long> eventIds) {
+        return eventIds != null && !eventIds.isEmpty() && eventIds.stream().distinct().allMatch(this::ownsEvent);
+    }
+
     public boolean ownsShift(Long shiftId) {
         return shiftId != null && workerShiftRepository.findById(shiftId)
                 .map(shift -> ownsWorker(shift.getWorker().getUserId()))

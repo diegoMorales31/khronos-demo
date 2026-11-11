@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -48,15 +49,38 @@ public class WorkerEventServiceImpl implements WorkerEventService {
     }
 
     @Override
-    public WorkerEventResponseDTO create(WorkerEventRequestDTO request) {
+    public List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests) {
 
-        Worker worker = workerRepository.findById(request.workerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Worker", request.workerId()));
+        List<WorkerEventResponseDTO> created = new ArrayList<>();
 
-        Event event = eventRepository.findById(request.eventId())
-                .orElseThrow(() -> new ResourceNotFoundException("Event", request.eventId()));
+        for (int i = 0; i < requests.size(); i++) {
+            WorkerEventRequestDTO request = requests.get(i);
 
-        if (workerEventRepository.existsByWorker_UserIdAndEvent_Id(request.workerId(), request.eventId())) {
+            Worker worker = workerRepository.findById(request.workerId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Worker", request.workerId()));
+
+            Event event = eventRepository.findById(request.eventId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Event", request.eventId()));
+
+            try {
+                validate(worker, event);
+            } catch (BusinessRuleException ex) {
+                throw new BusinessRuleException("Assignment [" + i + "]: " + ex.getMessage());
+            }
+
+            WorkerEvent workerEvent = workerEventRepository.save(workerEventMapper.toEntity(request, worker, event));
+
+            eventPublisher.publishEvent(new EventAssignedNotification(Recipient.of(worker), EventDetails.of(event)));
+
+            created.add(workerEventMapper.toResponse(workerEvent));
+        }
+
+        return created;
+    }
+
+    private void validate(Worker worker, Event event) {
+
+        if (workerEventRepository.existsByWorker_UserIdAndEvent_Id(worker.getUserId(), event.getId())) {
             throw new BusinessRuleException("Worker is already assigned to this event");
         }
 
@@ -71,12 +95,6 @@ public class WorkerEventServiceImpl implements WorkerEventService {
             throw new BusinessRuleException("The worker has no shift in zone '" + event.getZone().getName()
                     + "' on " + eventDate + " that has started by " + eventTime + " and is still running");
         }
-
-        WorkerEvent workerEvent = workerEventRepository.save(workerEventMapper.toEntity(request, worker, event));
-
-        eventPublisher.publishEvent(new EventAssignedNotification(Recipient.of(worker), EventDetails.of(event)));
-
-        return workerEventMapper.toResponse(workerEvent);
 
     }
 

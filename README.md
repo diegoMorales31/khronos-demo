@@ -71,7 +71,8 @@ These rules are enforced in the service layer. Breaking one returns **409 Confli
 
 **Events and assignments**
 - An event with workers assigned to it can't be moved to another establishment.
-- A worker can only be assigned to an event once.
+- Assignments are created **in batches**: `POST /api/worker-events` takes a list, so an owner can assign one worker to several events (or several workers at once) in one request. As with shifts, it's all or nothing, and the error names the failing item, for example `Assignment [2]: ...`.
+- A worker can only be assigned to an event once, including twice in the same batch.
 - A worker can only be assigned to an event in their own establishment, and only if one of their shifts covers it: the shift must be in the event's zone, on the event's date, and running at the event's start time.
 - If a worker's shift is edited or deleted and it no longer covers an event they are assigned to, they are unassigned from that event automatically. The same happens when an event is moved to a time or zone that the worker's shifts don't cover.
 
@@ -84,7 +85,7 @@ Workers get an email through [Resend](https://resend.com) whenever their schedul
 | A shift is created for them (one per shift in a batch) | New shift |
 | One of their shifts is edited | Shift changed, showing before and after |
 | One of their shifts is deleted, or moved to another worker | Shift cancelled |
-| They are assigned to an event | Assigned to event |
+| They are assigned to an event (one per assignment in a batch) | Assigned to event |
 | An event they are assigned to is edited | Event changed, showing before and after |
 | They are unassigned, the event or its zone is deleted, or their shift no longer covers the event | No longer assigned, with the reason |
 
@@ -104,7 +105,7 @@ All endpoints are under `/api` and require authentication. The full interactive 
 | Workers | `/api/workers` | Identified by their user ID. You can list them by establishment. |
 | Worker shifts | `/api/worker-shifts` | `POST` takes a **list**. You can list shifts by owner, worker or zone. |
 | Events | `/api/events` | You can list events by zone or establishment. |
-| Worker events | `/api/worker-events` | Assigns a worker to an event. You can list assignments by worker or event. |
+| Worker events | `/api/worker-events` | `POST` takes a **list** of worker/event pairs. You can list assignments by worker or event. |
 
 ### Typical flow
 
@@ -119,7 +120,14 @@ All endpoints are under `/api` and require authentication. The full interactive 
      { "workerId": 6, "zoneId": 2, "date": "2026-11-14", "startTime": "17:00", "endTime": "22:00" }
    ]
    ```
-5. The owner creates an event in a zone (`POST /api/events`) and assigns workers whose shifts cover it (`POST /api/worker-events`).
+5. The owner creates events in a zone (`POST /api/events`) and assigns workers whose shifts cover them:
+   ```json
+   POST /api/worker-events
+   [
+     { "workerId": 5, "eventId": 10 },
+     { "workerId": 5, "eventId": 11 }
+   ]
+   ```
 
 ### Error format
 

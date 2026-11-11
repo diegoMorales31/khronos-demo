@@ -7,7 +7,7 @@ import java.util.List;
 
 public interface WorkerEventService {
 
-    WorkerEventResponseDTO create(WorkerEventRequestDTO request);
+    List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests);
 
     WorkerEventResponseDTO findById(Long id);
 
