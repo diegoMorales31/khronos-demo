@@ -7,9 +7,13 @@ import com.moga.khronosdemo.entities.Zone;
 import com.moga.khronosdemo.exceptions.BusinessRuleException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;
 import com.moga.khronosdemo.mappers.EventMapper;
+import com.moga.khronosdemo.notifications.EventDetails;
+import com.moga.khronosdemo.notifications.EventUnassignedNotification;
+import com.moga.khronosdemo.notifications.Recipient;
 import com.moga.khronosdemo.repositories.EventRepository;
 import com.moga.khronosdemo.repositories.ZoneRepository;
 import com.moga.khronosdemo.services.EventService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,11 +26,16 @@ public class EventServiceImpl implements EventService {
     private final EventRepository eventRepository;
     private final ZoneRepository zoneRepository;
     private final EventMapper eventMapper;
+    private final ApplicationEventPublisher eventPublisher;
+    private final EventAssignmentReconciler assignmentReconciler;
 
-    public EventServiceImpl(EventRepository eventRepository, ZoneRepository zoneRepository, EventMapper eventMapper) {
+    public EventServiceImpl(EventRepository eventRepository, ZoneRepository zoneRepository, EventMapper eventMapper,
+                            ApplicationEventPublisher eventPublisher, EventAssignmentReconciler assignmentReconciler) {
         this.eventRepository = eventRepository;
         this.zoneRepository = zoneRepository;
         this.eventMapper = eventMapper;
+        this.eventPublisher = eventPublisher;
+        this.assignmentReconciler = assignmentReconciler;
     }
 
     @Override
@@ -73,7 +82,11 @@ public class EventServiceImpl implements EventService {
             throw new BusinessRuleException("Cannot move an event with assigned workers to another establishment");
         }
 
+        EventDetails before = EventDetails.of(event);
+
         eventMapper.updateEntity(event, request, zone);
+
+        assignmentReconciler.reconcileEventChange(event, before);
 
         return eventMapper.toResponse(event);
 
@@ -81,7 +94,12 @@ public class EventServiceImpl implements EventService {
 
     @Override
     public void delete(Long id) {
-        eventRepository.delete(getEvent(id));
+        Event event = getEvent(id);
+        EventDetails details = EventDetails.of(event);
+        event.getWorkerEvents().forEach(workerEvent -> eventPublisher.publishEvent(
+                new EventUnassignedNotification(Recipient.of(workerEvent.getWorker()), details,
+                        EventUnassignedNotification.EVENT_CANCELLED)));
+        eventRepository.delete(event);
     }
 
     private Event getEvent(Long id) {

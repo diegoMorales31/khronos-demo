@@ -12,6 +12,7 @@ The API stops scheduling mistakes before they are saved. For example, it won't l
 | Framework | Spring Boot 4 (Web MVC, Data JPA, Validation, Security) |
 | Database | Supabase |
 | Auth | HTTP Basic, stateless |
+| Email | Resend |
 | Docs | springdoc OpenAPI / Swagger UI |
 | Build | Maven (wrapper included) |
 
@@ -72,6 +73,24 @@ These rules are enforced in the service layer. Breaking one returns **409 Confli
 - An event with workers assigned to it can't be moved to another establishment.
 - A worker can only be assigned to an event once.
 - A worker can only be assigned to an event in their own establishment, and only if one of their shifts covers it: the shift must be in the event's zone, on the event's date, and running at the event's start time.
+- If a worker's shift is edited or deleted and it no longer covers an event they are assigned to, they are unassigned from that event automatically. The same happens when an event is moved to a time or zone that the worker's shifts don't cover.
+
+## Email notifications
+
+Workers get an email through [Resend](https://resend.com) whenever their schedule changes:
+
+| Trigger | Email |
+|---|---|
+| A shift is created for them (one per shift in a batch) | New shift |
+| One of their shifts is edited | Shift changed, showing before and after |
+| One of their shifts is deleted, or moved to another worker | Shift cancelled |
+| They are assigned to an event | Assigned to event |
+| An event they are assigned to is edited | Event changed, showing before and after |
+| They are unassigned, the event or its zone is deleted, or their shift no longer covers the event | No longer assigned, with the reason |
+
+Emails are sent asynchronously and only after the transaction commits, so a rejected request (for example, a batch of shifts where one fails) sends nothing. A failed delivery never fails the API request. Every attempt, successful or not, is recorded in the `email_logs` table.
+
+Resend is configured with `RESEND_API_KEY` (required) and `RESEND_FROM` (optional, defaults to `Khronos <onboarding@resend.dev>`).
 
 ## API overview
 
@@ -137,6 +156,7 @@ src/main/java/com/moga/khronosdemo
 ├── dtos/          Request DTOs (with validation) and response DTOs
 ├── entities/      JPA entities and the Role enum
 ├── exceptions/    Domain exceptions and GlobalExceptionHandler
+├── notifications/ Notification events and the listener that emails workers
 ├── mappers/       Conversions between entities and DTOs
 ├── repositories/  Spring Data JPA repositories, including the overlap and coverage queries
 ├── security/      SecurityConfig, AccessGuard and the user-details service

@@ -7,9 +7,15 @@ import com.moga.khronosdemo.entities.Zone;
 import com.moga.khronosdemo.exceptions.BusinessRuleException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;
 import com.moga.khronosdemo.mappers.ZoneMapper;
+import com.moga.khronosdemo.notifications.EventDetails;
+import com.moga.khronosdemo.notifications.EventUnassignedNotification;
+import com.moga.khronosdemo.notifications.Recipient;
+import com.moga.khronosdemo.notifications.ShiftCancelledNotification;
+import com.moga.khronosdemo.notifications.ShiftDetails;
 import com.moga.khronosdemo.repositories.EstablishmentRepository;
 import com.moga.khronosdemo.repositories.ZoneRepository;
 import com.moga.khronosdemo.services.ZoneService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,12 +28,14 @@ public class ZoneServiceImpl implements ZoneService {
     private final ZoneRepository zoneRepository;
     private final EstablishmentRepository establishmentRepository;
     private final ZoneMapper zoneMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ZoneServiceImpl(ZoneRepository zoneRepository, EstablishmentRepository establishmentRepository,
-                           ZoneMapper zoneMapper) {
+                           ZoneMapper zoneMapper, ApplicationEventPublisher eventPublisher) {
         this.zoneRepository = zoneRepository;
         this.establishmentRepository = establishmentRepository;
         this.zoneMapper = zoneMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -83,7 +91,19 @@ public class ZoneServiceImpl implements ZoneService {
 
     @Override
     public void delete(Long id) {
-        zoneRepository.delete(getZone(id));
+        Zone zone = getZone(id);
+
+        zone.getWorkerShifts().forEach(shift -> eventPublisher.publishEvent(
+                new ShiftCancelledNotification(Recipient.of(shift.getWorker()), ShiftDetails.of(shift))));
+
+        zone.getEvents().forEach(event -> {
+            EventDetails details = EventDetails.of(event);
+            event.getWorkerEvents().forEach(workerEvent -> eventPublisher.publishEvent(
+                    new EventUnassignedNotification(Recipient.of(workerEvent.getWorker()), details,
+                            EventUnassignedNotification.EVENT_CANCELLED)));
+        });
+
+        zoneRepository.delete(zone);
     }
 
     private Zone getZone(Long id) {

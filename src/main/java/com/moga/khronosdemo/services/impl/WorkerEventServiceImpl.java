@@ -8,11 +8,16 @@ import com.moga.khronosdemo.entities.WorkerEvent;
 import com.moga.khronosdemo.exceptions.BusinessRuleException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;
 import com.moga.khronosdemo.mappers.WorkerEventMapper;
+import com.moga.khronosdemo.notifications.EventAssignedNotification;
+import com.moga.khronosdemo.notifications.EventDetails;
+import com.moga.khronosdemo.notifications.EventUnassignedNotification;
+import com.moga.khronosdemo.notifications.Recipient;
 import com.moga.khronosdemo.repositories.EventRepository;
 import com.moga.khronosdemo.repositories.WorkerEventRepository;
 import com.moga.khronosdemo.repositories.WorkerRepository;
 import com.moga.khronosdemo.repositories.WorkerShiftRepository;
 import com.moga.khronosdemo.services.WorkerEventService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,15 +34,17 @@ public class WorkerEventServiceImpl implements WorkerEventService {
     private final EventRepository eventRepository;
     private final WorkerShiftRepository workerShiftRepository;
     private final WorkerEventMapper workerEventMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public WorkerEventServiceImpl(WorkerEventRepository workerEventRepository, WorkerRepository workerRepository,
                                   EventRepository eventRepository, WorkerShiftRepository workerShiftRepository,
-                                  WorkerEventMapper workerEventMapper) {
+                                  WorkerEventMapper workerEventMapper, ApplicationEventPublisher eventPublisher) {
         this.workerEventRepository = workerEventRepository;
         this.workerRepository = workerRepository;
         this.eventRepository = eventRepository;
         this.workerShiftRepository = workerShiftRepository;
         this.workerEventMapper = workerEventMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -65,9 +72,11 @@ public class WorkerEventServiceImpl implements WorkerEventService {
                     + "' on " + eventDate + " that has started by " + eventTime + " and is still running");
         }
 
-        WorkerEvent workerEvent = workerEventMapper.toEntity(request, worker, event);
+        WorkerEvent workerEvent = workerEventRepository.save(workerEventMapper.toEntity(request, worker, event));
 
-        return workerEventMapper.toResponse(workerEventRepository.save(workerEvent));
+        eventPublisher.publishEvent(new EventAssignedNotification(Recipient.of(worker), EventDetails.of(event)));
+
+        return workerEventMapper.toResponse(workerEvent);
 
     }
 
@@ -91,7 +100,10 @@ public class WorkerEventServiceImpl implements WorkerEventService {
 
     @Override
     public void delete(Long id) {
-        workerEventRepository.delete(getWorkerEvent(id));
+        WorkerEvent workerEvent = getWorkerEvent(id);
+        eventPublisher.publishEvent(new EventUnassignedNotification(
+                Recipient.of(workerEvent.getWorker()), EventDetails.of(workerEvent.getEvent()), null));
+        workerEventRepository.delete(workerEvent);
     }
 
     private WorkerEvent getWorkerEvent(Long id) {
