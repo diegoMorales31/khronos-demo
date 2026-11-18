@@ -1,13 +1,14 @@
 package com.moga.khronosdemo.dtos.request;
 
+import com.moga.khronosdemo.validation.MaxBytes;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public record ChangePasswordRequestDTO(
-        @NotBlank
+        @NotBlank @MaxBytes(72)
         String currentPassword,
 
-        @NotBlank @Size(min = 8, max = 100)
+        @NotBlank @Size(min = 8) @MaxBytes(72)
         String newPassword
 ) {
 }

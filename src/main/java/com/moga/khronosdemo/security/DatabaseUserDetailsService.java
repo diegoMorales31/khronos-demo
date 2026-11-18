@@ -1,9 +1,8 @@
 package com.moga.khronosdemo.security;
 
 import com.moga.khronosdemo.entities.User;
-import com.moga.khronosdemo.entities.Worker;
 import com.moga.khronosdemo.repositories.UserRepository;
-import com.moga.khronosdemo.repositories.WorkerRepository;
+import com.moga.khronosdemo.repositories.UserRepository.AccountWithStatus;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -12,34 +11,33 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
+// Runs on every request with a token, so each lookup is a single query (see UserRepository.findAccountById)
 @Service
 public class DatabaseUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
-    private final WorkerRepository workerRepository;
 
-    public DatabaseUserDetailsService(UserRepository userRepository, WorkerRepository workerRepository) {
+    public DatabaseUserDetailsService(UserRepository userRepository) {
         this.userRepository = userRepository;
-        this.workerRepository = workerRepository;
     }
 
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) {
-        User user = userRepository.findByUsername(username)
+        return userRepository.findAccountByUsername(username)
+                .map(DatabaseUserDetailsService::toSecurityUser)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-        return toSecurityUser(user);
     }
 
     @Transactional(readOnly = true)
     public Optional<SecurityUser> loadUserById(Long id) {
-        return userRepository.findById(id).map(this::toSecurityUser);
+        return userRepository.findAccountById(id).map(DatabaseUserDetailsService::toSecurityUser);
     }
 
-    private SecurityUser toSecurityUser(User user) {
-        boolean enabled = workerRepository.findById(user.getId())
-                .map(Worker::getActive)
-                .orElse(true);
+    // A worker can only use their account while active; any other account always can
+    private static SecurityUser toSecurityUser(AccountWithStatus found) {
+        User user = found.getAccount();
+        boolean enabled = !Boolean.FALSE.equals(found.getWorkerActive());
         return new SecurityUser(user.getId(), user.getUsername(), user.getPassword(), user.getRole(), enabled,
                 user.getCredentialsChangedAt());
     }

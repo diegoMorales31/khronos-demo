@@ -1,0 +1,8 @@
+# Keep the build context small and keep secrets out of it
+.git
+.github
+.idea
+.vscode
+target
+.env
+*.iml

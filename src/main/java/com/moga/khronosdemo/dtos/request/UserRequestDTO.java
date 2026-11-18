@@ -1,5 +1,6 @@
 package com.moga.khronosdemo.dtos.request;
 
+import com.moga.khronosdemo.validation.MaxBytes;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -9,7 +10,7 @@ public record UserRequestDTO(
         @NotBlank @Size(min = 3, max = 50)
         String username,
 
-        @NotBlank @Size(min = 8, max = 100)
+        @NotBlank @Size(min = 8) @MaxBytes(72)
         String password,
 
         @NotBlank @Size(max = 50)

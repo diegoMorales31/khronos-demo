@@ -21,7 +21,8 @@ public class EstablishmentMapper {
                 owner != null ? owner.getId() : null,
                 owner != null ? owner.getFirstName() + " " + owner.getLastName() : null,
                 owner != null ? owner.getEmail() : null,
-                owner != null ? owner.getPhoneNumber() : null
+                owner != null ? owner.getPhoneNumber() : null,
+                establishment.getTimeZone()
         );
     }
 
@@ -38,5 +39,8 @@ public class EstablishmentMapper {
         establishment.setEstablishmentName(request.establishmentName());
         establishment.setEstablishmentAddress(request.establishmentAddress());
         establishment.setOwner(owner);
+        if (request.timeZone() != null) {
+            establishment.setTimeZone(request.timeZone());
+        }
     }
 }

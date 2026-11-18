@@ -1,0 +1,41 @@
+# Local development: a PostgreSQL database and the API built from this repository.
+#
+#   cp .env.example .env    # then set JWT_SECRET (and anything else you need)
+#   docker compose up --build
+#
+# The API is on http://localhost:8080 and the database on localhost:5432. Set API_PORT or
+# DB_PORT in .env to use other ports. The database lives in the "db-data" volume;
+# "docker compose down -v" deletes it.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: khronos
+      POSTGRES_USER: khronos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-khronos}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U khronos -d khronos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      # Always the database above, whatever DB_URL says in .env
+      DB_URL: jdbc:postgresql://db:5432/khronos
+      DB_USERNAME: khronos
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-khronos}
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

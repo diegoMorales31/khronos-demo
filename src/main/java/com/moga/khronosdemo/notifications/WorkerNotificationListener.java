@@ -84,13 +84,15 @@ public class WorkerNotificationListener {
         return """
                 <ul>
                   <li><strong>Date:</strong> %s</li>
-                  <li><strong>Time:</strong> %s - %s</li>
+                  <li><strong>Time:</strong> %s - %s%s</li>
                   <li><strong>Zone:</strong> %s</li>
                 </ul>
                 """.formatted(
                 shift.date().format(DATE),
                 shift.startTime().format(TIME),
                 shift.endTime().format(TIME),
+                // A shift that ends after midnight shows its end as the next day: 18:00 - 02:00 (+1)
+                shift.endsNextDay() ? " (+1)" : "",
                 htmlEscape(shift.zoneName()));
     }
 
@@ -108,7 +110,7 @@ public class WorkerNotificationListener {
                 event.dateTime().format(DATE),
                 event.dateTime().format(TIME),
                 htmlEscape(event.zoneName()),
-                htmlEscape(event.description()));
+                event.description() != null ? htmlEscape(event.description()) : "-");
     }
 
     private void send(Recipient recipient, String subject, String body) {
@@ -116,7 +118,7 @@ public class WorkerNotificationListener {
         try {
             emailService.send(new EmailRequestDTO(recipient.email(), subject, html));
         } catch (EmailDeliveryException ex) {
-            log.debug("Notification to {} not delivered; recorded in email_logs", recipient.email());
+            log.warn("Notification to {} not delivered; recorded in email_logs", recipient.email());
         }
     }
 }
