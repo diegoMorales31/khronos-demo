@@ -2,6 +2,7 @@ package com.moga.khronosdemo.services;
 
 import com.moga.khronosdemo.dtos.request.WorkerEventRequestDTO;
 import com.moga.khronosdemo.dtos.response.WorkerEventResponseDTO;
+import com.moga.khronosdemo.notifications.AssignmentBatch;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -9,6 +10,9 @@ import java.util.List;
 public interface WorkerEventService {
 
     List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests);
+
+    // Same as create, but adds the assignments to the caller's batch instead of emailing them
+    List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests, AssignmentBatch notifications);
 
     WorkerEventResponseDTO findById(Long id);
 

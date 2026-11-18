@@ -1,7 +1,10 @@
 package com.moga.khronosdemo.controllers;
 
+import com.moga.khronosdemo.dtos.request.ShiftsWithEventsRequestDTO;
 import com.moga.khronosdemo.dtos.request.WorkerShiftRequestDTO;
+import com.moga.khronosdemo.dtos.response.ShiftsWithEventsResponseDTO;
 import com.moga.khronosdemo.dtos.response.WorkerShiftResponseDTO;
+import com.moga.khronosdemo.services.ScheduleService;
 import com.moga.khronosdemo.services.WorkerShiftService;
 import com.moga.khronosdemo.validation.MaxBatchSize;
 import jakarta.validation.Valid;
@@ -19,9 +22,11 @@ import java.util.List;
 public class WorkerShiftController {
 
     private final WorkerShiftService workerShiftService;
+    private final ScheduleService scheduleService;
 
-    public WorkerShiftController(WorkerShiftService workerShiftService) {
+    public WorkerShiftController(WorkerShiftService workerShiftService, ScheduleService scheduleService) {
         this.workerShiftService = workerShiftService;
+        this.scheduleService = scheduleService;
     }
 
     @PostMapping
@@ -29,6 +34,15 @@ public class WorkerShiftController {
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsWorkers(#request.![workerId()])")
     public List<WorkerShiftResponseDTO> create(@RequestBody @NotEmpty @MaxBatchSize List<@Valid WorkerShiftRequestDTO> request) {
         return workerShiftService.create(request);
+    }
+
+    @PostMapping("/with-events")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or (@access.ownsWorkers(#request.shifts().![workerId()])"
+            + " and (#request.assignments().isEmpty() or (@access.ownsWorkers(#request.assignments().![workerId()])"
+            + " and @access.ownsEvents(#request.assignments().![eventId()]))))")
+    public ShiftsWithEventsResponseDTO createWithEvents(@Valid @RequestBody ShiftsWithEventsRequestDTO request) {
+        return scheduleService.createShiftsWithEvents(request);
     }
 
     @GetMapping

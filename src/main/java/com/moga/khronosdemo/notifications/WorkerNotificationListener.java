@@ -11,6 +11,9 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.springframework.web.util.HtmlUtils.htmlEscape;
 
@@ -29,10 +32,27 @@ public class WorkerNotificationListener {
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onShiftAssigned(ShiftAssignedNotification notification) {
-        send(notification.recipient(),
-                "New shift on " + notification.shift().date().format(DATE),
-                "<p>You have been assigned a new shift:</p>" + shiftList(notification.shift()));
+    public void onAssigned(AssignmentsNotification notification) {
+        List<ShiftDetails> shifts = notification.shifts().stream()
+                .sorted(Comparator.comparing(ShiftDetails::startDateTime))
+                .toList();
+        List<EventDetails> events = notification.events().stream()
+                .sorted(Comparator.comparing(EventDetails::dateTime))
+                .toList();
+        if (shifts.isEmpty() && events.isEmpty()) {
+            return;
+        }
+
+        StringBuilder body = new StringBuilder("<p>You have new work assigned:</p>");
+        if (!shifts.isEmpty()) {
+            body.append("<p><strong>").append(shifts.size() == 1 ? "Shift" : "Shifts").append("</strong></p>")
+                    .append(assignedShiftList(shifts));
+        }
+        if (!events.isEmpty()) {
+            body.append("<p><strong>").append(events.size() == 1 ? "Event" : "Events").append("</strong></p>")
+                    .append(assignedEventList(events));
+        }
+        send(notification.recipient(), assignedSubject(shifts, events), body.toString());
     }
 
     @Async
@@ -55,14 +75,6 @@ public class WorkerNotificationListener {
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onEventAssigned(EventAssignedNotification notification) {
-        send(notification.recipient(),
-                "You have been assigned to " + notification.event().title(),
-                "<p>You have been assigned to an event:</p>" + eventList(notification.event()));
-    }
-
-    @Async
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onEventChanged(EventChangedNotification notification) {
         send(notification.recipient(),
                 "The event " + notification.before().title() + " has changed",
@@ -78,6 +90,45 @@ public class WorkerNotificationListener {
         send(notification.recipient(),
                 "You are no longer assigned to " + notification.event().title(),
                 "<p>You are no longer assigned to the following event:</p>" + eventList(notification.event()) + reason);
+    }
+
+    private static String assignedSubject(List<ShiftDetails> shifts, List<EventDetails> events) {
+        if (events.isEmpty()) {
+            return shifts.size() == 1 ? "New shift on " + shifts.get(0).date().format(DATE) : "You have " + shifts.size() + " new shifts";
+        }
+        if (shifts.isEmpty()) {
+            return events.size() == 1 ? "You have been assigned to " + events.get(0).title()
+                    : "You have been assigned to " + events.size() + " events";
+        }
+        return "You have " + count(shifts.size(), "new shift") + " and " + count(events.size(), "event");
+    }
+
+    private static String count(int n, String noun) {
+        return n + " " + noun + (n == 1 ? "" : "s");
+    }
+
+    // One line per shift: "10/05/2030 · 18:00 - 02:00 (+1) · Bar"
+    private String assignedShiftList(List<ShiftDetails> shifts) {
+        return shifts.stream()
+                .map(shift -> "<li><strong>%s</strong> · %s - %s%s · %s</li>".formatted(
+                        shift.date().format(DATE),
+                        shift.startTime().format(TIME),
+                        shift.endTime().format(TIME),
+                        shift.endsNextDay() ? " (+1)" : "",
+                        htmlEscape(shift.zoneName())))
+                .collect(Collectors.joining("", "<ul>", "</ul>"));
+    }
+
+    // One line per event: "10/05/2030 19:00 · Wedding dinner · Hall", and its description below when it has one
+    private String assignedEventList(List<EventDetails> events) {
+        return events.stream()
+                .map(event -> "<li><strong>%s %s</strong> · %s · %s%s</li>".formatted(
+                        event.dateTime().format(DATE),
+                        event.dateTime().format(TIME),
+                        htmlEscape(event.title()),
+                        htmlEscape(event.zoneName()),
+                        event.description() != null ? "<br>" + htmlEscape(event.description()) : ""))
+                .collect(Collectors.joining("", "<ul>", "</ul>"));
     }
 
     private String shiftList(ShiftDetails shift) {

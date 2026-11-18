@@ -8,7 +8,7 @@ import com.moga.khronosdemo.entities.WorkerEvent;
 import com.moga.khronosdemo.exceptions.BusinessRuleException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;
 import com.moga.khronosdemo.mappers.WorkerEventMapper;
-import com.moga.khronosdemo.notifications.EventAssignedNotification;
+import com.moga.khronosdemo.notifications.AssignmentBatch;
 import com.moga.khronosdemo.notifications.EventDetails;
 import com.moga.khronosdemo.notifications.EventUnassignedNotification;
 import com.moga.khronosdemo.notifications.Recipient;
@@ -50,6 +50,16 @@ public class WorkerEventServiceImpl implements WorkerEventService {
 
     @Override
     public List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests) {
+        AssignmentBatch notifications = new AssignmentBatch();
+        List<WorkerEventResponseDTO> created = create(requests, notifications);
+        // One email per worker listing all the events they were assigned to. Published inside the transaction,
+        // so if any assignment of the batch is rejected nothing is committed and no email is sent
+        notifications.publish(eventPublisher);
+        return created;
+    }
+
+    @Override
+    public List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests, AssignmentBatch notifications) {
 
         // Locks the events, then the workers, each in id order: the order every path that locks both
         // uses (see EventServiceImpl). A move or delete of one of the events, or a change to one of the
@@ -77,7 +87,7 @@ public class WorkerEventServiceImpl implements WorkerEventService {
 
             WorkerEvent workerEvent = workerEventRepository.save(workerEventMapper.toEntity(request, worker, event));
 
-            eventPublisher.publishEvent(new EventAssignedNotification(Recipient.of(worker), EventDetails.of(event)));
+            notifications.addEvent(worker, EventDetails.of(event));
 
             created.add(workerEventMapper.toResponse(workerEvent));
         }
