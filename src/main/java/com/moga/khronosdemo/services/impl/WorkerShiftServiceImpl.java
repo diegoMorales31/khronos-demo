@@ -9,7 +9,8 @@ import com.moga.khronosdemo.exceptions.BusinessRuleException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;
 import com.moga.khronosdemo.mappers.WorkerShiftMapper;
 import com.moga.khronosdemo.notifications.Recipient;
-import com.moga.khronosdemo.notifications.ShiftAssignedNotification;
+import com.moga.khronosdemo.notifications.AssignmentBatch;
+import com.moga.khronosdemo.notifications.AssignmentsNotification;
 import com.moga.khronosdemo.notifications.ShiftCancelledNotification;
 import com.moga.khronosdemo.notifications.ShiftChangedNotification;
 import com.moga.khronosdemo.notifications.ShiftDetails;
@@ -54,6 +55,16 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
 
     @Override
     public List<WorkerShiftResponseDTO> create(List<WorkerShiftRequestDTO> requests) {
+        AssignmentBatch notifications = new AssignmentBatch();
+        List<WorkerShiftResponseDTO> created = create(requests, notifications);
+        // One email per worker listing all their new shifts. Published inside the transaction, so if any
+        // shift of the batch is rejected nothing is committed and no email is sent
+        notifications.publish(eventPublisher);
+        return created;
+    }
+
+    @Override
+    public List<WorkerShiftResponseDTO> create(List<WorkerShiftRequestDTO> requests, AssignmentBatch notifications) {
 
         lockWorkers(requests.stream().map(WorkerShiftRequestDTO::workerId).toList());
 
@@ -76,7 +87,7 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
             WorkerShift workerShift = workerShiftRepository.save(workerShiftMapper.toEntity(request, worker, zone));
             saved.add(workerShift);
 
-            eventPublisher.publishEvent(new ShiftAssignedNotification(Recipient.of(worker), ShiftDetails.of(workerShift)));
+            notifications.addShift(worker, ShiftDetails.of(workerShift));
 
             created.add(workerShiftMapper.toResponse(workerShift));
         }
@@ -145,7 +156,7 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
 
         if (!previousWorker.getUserId().equals(worker.getUserId())) {
             eventPublisher.publishEvent(new ShiftCancelledNotification(Recipient.of(previousWorker), before));
-            eventPublisher.publishEvent(new ShiftAssignedNotification(Recipient.of(worker), after));
+            eventPublisher.publishEvent(new AssignmentsNotification(Recipient.of(worker), List.of(after), List.of()));
             assignmentReconciler.unassignUncoveredEvents(previousWorker, before, null);
         } else if (!before.equals(after)) {
             eventPublisher.publishEvent(new ShiftChangedNotification(Recipient.of(worker), before, after));

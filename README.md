@@ -614,14 +614,15 @@ Workers get an email through [Resend](https://resend.com) whenever their schedul
 
 | Trigger | Email |
 |---|---|
-| A shift is created for them (one per shift in a batch) | New shift. A night shift shows its end as `02:00 (+1)` |
+| Shifts are created for them | **One email per worker per request**, listing all their new shifts by start time, one line each with date, hours and zone: "New shift on dd/MM/yyyy" for one, "You have N new shifts" for several. A night shift shows its end as `02:00 (+1)` |
 | One of their shifts is edited | Shift changed, showing before and after |
-| One of their shifts is deleted, or moved to another worker | Shift cancelled |
-| They are assigned to an event (one per assignment in a batch) | Assigned to event |
+| One of their shifts is deleted, or moved to another worker | Shift cancelled (the new worker gets a new-shift email) |
+| They are assigned to events | **One email per worker per request**, listing all their events by date: "You have been assigned to <title>" for one, "You have been assigned to N events" for several |
+| Shifts and events are given to them together (`POST /api/worker-shifts/with-events`) | **One email per worker** with two lists, their new shifts and their events: "You have 1 new shift and 2 events" |
 | An event they are assigned to is edited | Event changed, showing before and after |
 | They are unassigned, the event or its zone is deleted, or their shift no longer covers the event | No longer assigned, with the reason |
 
-Emails are sent asynchronously and only after the transaction commits, so a rejected request (for example, a batch of shifts where one fails) sends nothing. A failed delivery never fails the API request: it is logged as a warning (recipient only, never the body). Every attempt, successful or not, is recorded in the `email_logs` table.
+Emails are sent asynchronously and only after the transaction commits, so a rejected request (for example, a batch of shifts where one fails) sends nothing. Grouping only covers what is created in the same request: shifts created in separate requests, and every change, cancellation or unassignment, still send one email each. A failed delivery never fails the API request: it is logged as a warning (recipient only, never the body). Every attempt, successful or not, is recorded in the `email_logs` table.
 
 Resend is configured with `RESEND_API_KEY` (required) and `RESEND_FROM` (optional, defaults to `Khronos <onboarding@resend.dev>`). Calls to Resend give up after `RESEND_CONNECT_TIMEOUT` (default `PT5S`) to connect and `RESEND_READ_TIMEOUT` (default `PT10S`) to answer.
 
@@ -636,7 +637,7 @@ All endpoints are under `/api` and need a bearer token, except `POST /api/auth/l
 | Establishments | `/api/establishments` | You can also list them by owner: `/owner/{ownerId}`. |
 | Zones | `/api/zones` | You can also list them by establishment: `/establishment/{id}`. |
 | Workers | `/api/workers` | Identified by their user ID. You can list them by establishment. `POST /with-user` creates the account and links it in one step. `PUT /{id}/active` turns a worker on or off. |
-| Worker shifts | `/api/worker-shifts` | `POST` takes a **list**. You can list shifts by owner, worker or zone. |
+| Worker shifts | `/api/worker-shifts` | `POST` takes a **list**. `POST /with-events` creates shifts and puts workers on events in one step. You can list shifts by owner, worker or zone. |
 | Events | `/api/events` | `POST` takes a **list**. You can list events by zone or establishment. |
 | Worker events | `/api/worker-events` | `POST` takes a **list** of worker/event pairs. You can list assignments by worker, event or establishment. |
 | Time entries | `/api/time-entries` | Workers clock in and out; owners enter, clock out, correct and void entries. See below. |
@@ -658,6 +659,7 @@ All endpoints are under `/api` and need a bearer token, except `POST /api/auth/l
 | Method and path | Body | Answer | Who |
 |---|---|---|---|
 | `POST /api/workers/with-user` | `{ "establishmentId": 1, "user": { same fields as POST /api/users/create/worker } }` | **201** `{ "user": {...}, "worker": {...} }`. The account and the link are saved together or not at all. | The establishment's owner or an admin |
+| `POST /api/worker-shifts/with-events` | `{ "shifts": [ same items as POST /api/worker-shifts ], "assignments": [ { "workerId": 4, "eventId": 9 } ] }`. `assignments` may be empty. | **201** `{ "shifts": [...], "assignments": [...] }`. The shifts are saved first and the assignments are checked against them, so a new shift can cover its events. All or nothing: the error names the item, `Shift [1]: ...` or `Assignment [0]: ...`. Each worker gets one email with both lists. | The owner of every worker and event, or an admin |
 | `PUT /api/workers/{id}/active` | `{ "active": false }` | **200** the worker. Repeating it changes nothing. | The worker's owner or an admin |
 | `PUT /api/users/{id}/password/reset` | `{ "newPassword": "..." }` | **204**. The user's older tokens stop working. | An admin (not on another admin) or the worker's owner |
 | `GET /api/worker-events/establishment/{id}?from&to` | | **200** list of assignments. A worker gets only their own. | The owner, its workers or an admin |
