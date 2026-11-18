@@ -2,12 +2,15 @@ package com.moga.khronosdemo.entities;
 
 import jakarta.persistence.*;
 
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
 @Table(name="establishments")
 public class Establishment {
+
+    public static final String DEFAULT_TIME_ZONE = "Europe/Madrid";
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
@@ -17,6 +20,10 @@ public class Establishment {
 
     @Column(unique = true)
     private String establishmentAddress;
+
+    // IANA time zone used to turn clock-in instants into local dates and times
+    @Column(nullable = false, length = 64)
+    private String timeZone = DEFAULT_TIME_ZONE;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
@@ -59,6 +66,18 @@ public class Establishment {
 
     public void setEstablishmentAddress(String establishmentAddress) {
         this.establishmentAddress = establishmentAddress;
+    }
+
+    public String getTimeZone() {
+        return timeZone;
+    }
+
+    public void setTimeZone(String timeZone) {
+        this.timeZone = timeZone;
+    }
+
+    public ZoneId getZoneId() {
+        return ZoneId.of(timeZone);
     }
 
     public User getOwner() {

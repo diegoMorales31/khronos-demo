@@ -14,12 +14,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
 
 @Service
@@ -36,12 +39,19 @@ public class EmailServiceImpl implements EmailService {
     public EmailServiceImpl(EmailLogRepository emailLogRepository, EmailLogMapper emailLogMapper,
                             @Value("${resend.api-key}") String apiKey,
                             @Value("${resend.from}") String from,
-                            @Value("${resend.base-url:" + RESEND_BASE_URL + "}") String baseUrl) {
+                            @Value("${resend.base-url:" + RESEND_BASE_URL + "}") String baseUrl,
+                            @Value("${resend.connect-timeout}") Duration connectTimeout,
+                            @Value("${resend.read-timeout}") Duration readTimeout) {
         this.emailLogRepository = emailLogRepository;
         this.emailLogMapper = emailLogMapper;
         this.from = from;
+        // Without timeouts a slow or unreachable Resend would hold a notification thread indefinitely
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
+                HttpClient.newBuilder().connectTimeout(connectTimeout).build());
+        requestFactory.setReadTimeout(readTimeout);
         this.restClient = RestClient.builder()
                 .baseUrl(baseUrl)
+                .requestFactory(requestFactory)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                 .build();
     }

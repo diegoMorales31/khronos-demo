@@ -51,6 +51,13 @@ public class WorkerEventServiceImpl implements WorkerEventService {
     @Override
     public List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests) {
 
+        // Locks the events, then the workers, each in id order: the order every path that locks both
+        // uses (see EventServiceImpl). A move or delete of one of the events, or a change to one of the
+        // workers' shifts, waits until these assignments are committed, and the other way round, so
+        // neither the event nor the covering shift can change while the coverage is being checked.
+        eventRepository.lockAllById(requests.stream().map(WorkerEventRequestDTO::eventId).toList());
+        workerRepository.lockAllById(requests.stream().map(WorkerEventRequestDTO::workerId).toList());
+
         List<WorkerEventResponseDTO> created = new ArrayList<>();
 
         for (int i = 0; i < requests.size(); i++) {
@@ -80,6 +87,10 @@ public class WorkerEventServiceImpl implements WorkerEventService {
 
     private void validate(Worker worker, Event event) {
 
+        if (worker.getActive().equals(false)) {
+            throw new BusinessRuleException("Worker is not active");
+        }
+
         if (workerEventRepository.existsByWorker_UserIdAndEvent_Id(worker.getUserId(), event.getId())) {
             throw new BusinessRuleException("Worker is already assigned to this event");
         }
@@ -91,7 +102,8 @@ public class WorkerEventServiceImpl implements WorkerEventService {
         LocalDate eventDate = event.getDateTime().toLocalDate();
         LocalTime eventTime = event.getDateTime().toLocalTime();
 
-        if (!workerShiftRepository.existsShiftCoveringEvent(worker.getUserId(), event.getZone().getId(), eventDate, eventTime)) {
+        // A shift from the day before that runs past midnight can cover an event in the early hours
+        if (!workerShiftRepository.existsShiftCoveringEvent(worker.getUserId(), event.getZone().getId(), event.getDateTime())) {
             throw new BusinessRuleException("The worker has no shift in zone '" + event.getZone().getName()
                     + "' on " + eventDate + " that has started by " + eventTime + " and is still running");
         }
@@ -114,6 +126,16 @@ public class WorkerEventServiceImpl implements WorkerEventService {
     @Transactional(readOnly = true)
     public List<WorkerEventResponseDTO> findByEvent(Long eventId) {
         return workerEventRepository.findByEvent_Id(eventId).stream().map(workerEventMapper::toResponse).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WorkerEventResponseDTO> findByEstablishment(Long establishmentId, Long workerId, LocalDate from, LocalDate to) {
+        DateRange range = new DateRange(from, to);
+        return workerEventRepository.findByEstablishment(establishmentId, workerId, range.startInclusive(), range.endExclusive())
+                .stream()
+                .map(workerEventMapper::toResponse)
+                .toList();
     }
 
     @Override

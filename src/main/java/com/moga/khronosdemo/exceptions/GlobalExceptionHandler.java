@@ -1,10 +1,12 @@
 package com.moga.khronosdemo.exceptions;
 
+import com.moga.khronosdemo.dtos.response.ErrorCode;
 import com.moga.khronosdemo.dtos.response.ErrorResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -39,14 +41,31 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), request, null);
     }
 
+    // Some rules carry a stable code, and details of what they are about, for clients to act on
     @ExceptionHandler(BusinessRuleException.class)
     public ResponseEntity<ErrorResponseDTO> handleBusinessRule(BusinessRuleException ex, HttpServletRequest request) {
-        return build(HttpStatus.CONFLICT, ex.getMessage(), request, null);
+        return build(HttpStatus.CONFLICT, ex.getMessage(), ex.getCode(), request, null, ex.getDetails());
+    }
+
+    // fieldErrors only when the service named the fields at fault
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<ErrorResponseDTO> handleInvalidRequest(InvalidRequestException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request, ex.getFieldErrors());
     }
 
     @ExceptionHandler(EmailDeliveryException.class)
     public ResponseEntity<ErrorResponseDTO> handleEmailDelivery(EmailDeliveryException ex, HttpServletRequest request) {
         return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), request, null);
+    }
+
+    @ExceptionHandler(TooManyLoginAttemptsException.class)
+    public ResponseEntity<ErrorResponseDTO> handleTooManyLoginAttempts(TooManyLoginAttemptsException ex,
+                                                                       HttpServletRequest request) {
+        ResponseEntity<ErrorResponseDTO> response =
+                build(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), ErrorCode.TOO_MANY_ATTEMPTS, request, null);
+        return ResponseEntity.status(response.getStatusCode())
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+                .body(response.getBody());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -94,16 +113,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponseDTO> handleAuthentication(AuthenticationException ex, HttpServletRequest request) {
         String message;
+        ErrorCode code;
         if (ex instanceof DisabledException) {
             message = "This account is disabled";
+            code = ErrorCode.ACCOUNT_DISABLED;
         } else if (ex instanceof OAuth2AuthenticationException || ex instanceof CredentialsExpiredException) {
             message = "Your session has expired or is no longer valid. Sign in again";
+            code = ErrorCode.SESSION_EXPIRED;
         } else if (ex instanceof InsufficientAuthenticationException) {
             message = "Authentication is required to access this resource";
+            code = ErrorCode.AUTHENTICATION_REQUIRED;
         } else {
             message = "Invalid username or password";
+            code = ErrorCode.INVALID_CREDENTIALS;
         }
-        return build(HttpStatus.UNAUTHORIZED, message, request, null);
+        return build(HttpStatus.UNAUTHORIZED, message, code, request, null);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -135,13 +159,26 @@ public class GlobalExceptionHandler {
 
     private ResponseEntity<ErrorResponseDTO> build(HttpStatus status, String message, HttpServletRequest request,
                                                    Map<String, String> fieldErrors) {
+        return build(status, message, null, request, fieldErrors);
+    }
+
+    private ResponseEntity<ErrorResponseDTO> build(HttpStatus status, String message, ErrorCode code,
+                                                   HttpServletRequest request, Map<String, String> fieldErrors) {
+        return build(status, message, code, request, fieldErrors, null);
+    }
+
+    private ResponseEntity<ErrorResponseDTO> build(HttpStatus status, String message, ErrorCode code,
+                                                   HttpServletRequest request, Map<String, String> fieldErrors,
+                                                   Map<String, String> details) {
         ErrorResponseDTO body = new ErrorResponseDTO(
                 Instant.now(),
                 status.value(),
                 status.getReasonPhrase(),
                 message,
                 request.getRequestURI(),
-                fieldErrors
+                fieldErrors,
+                code,
+                details
         );
         return ResponseEntity.status(status).body(body);
     }

@@ -40,7 +40,7 @@ class TokenFlowTests {
     }
 
     private JwtUserAuthenticationConverter converterReturning(SecurityUser user) {
-        return new JwtUserAuthenticationConverter(new DatabaseUserDetailsService(null, null) {
+        return new JwtUserAuthenticationConverter(new DatabaseUserDetailsService(null) {
             @Override
             public Optional<SecurityUser> loadUserById(Long id) {
                 return id.equals(user.getId()) ? Optional.of(user) : Optional.empty();

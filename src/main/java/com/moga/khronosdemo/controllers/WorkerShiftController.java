@@ -3,12 +3,15 @@ package com.moga.khronosdemo.controllers;
 import com.moga.khronosdemo.dtos.request.WorkerShiftRequestDTO;
 import com.moga.khronosdemo.dtos.response.WorkerShiftResponseDTO;
 import com.moga.khronosdemo.services.WorkerShiftService;
+import com.moga.khronosdemo.validation.MaxBatchSize;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -24,7 +27,7 @@ public class WorkerShiftController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsWorkers(#request.![workerId()])")
-    public List<WorkerShiftResponseDTO> create(@RequestBody @NotEmpty List<@Valid WorkerShiftRequestDTO> request) {
+    public List<WorkerShiftResponseDTO> create(@RequestBody @NotEmpty @MaxBatchSize List<@Valid WorkerShiftRequestDTO> request) {
         return workerShiftService.create(request);
     }
 
@@ -36,20 +39,26 @@ public class WorkerShiftController {
 
     @GetMapping("/owner/{ownerId}")
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or (hasRole('OWNER') and @access.isSelf(#ownerId))")
-    public List<WorkerShiftResponseDTO> findByOwner(@PathVariable Long ownerId) {
-        return workerShiftService.findByOwner(ownerId);
+    public List<WorkerShiftResponseDTO> findByOwner(@PathVariable Long ownerId,
+                                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+                                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return workerShiftService.findByOwner(ownerId, from, to);
     }
 
     @GetMapping("/worker/{workerId}")
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.isSelf(#workerId) or @access.ownsWorker(#workerId)")
-    public List<WorkerShiftResponseDTO> findByWorker(@PathVariable Long workerId) {
-        return workerShiftService.findByWorker(workerId);
+    public List<WorkerShiftResponseDTO> findByWorker(@PathVariable Long workerId,
+                                                     @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+                                                     @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return workerShiftService.findByWorker(workerId, from, to);
     }
 
     @GetMapping("/zone/{zoneId}")
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsZone(#zoneId)")
-    public List<WorkerShiftResponseDTO> findByZone(@PathVariable Long zoneId) {
-        return workerShiftService.findByZone(zoneId);
+    public List<WorkerShiftResponseDTO> findByZone(@PathVariable Long zoneId,
+                                                   @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+                                                   @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return workerShiftService.findByZone(zoneId, from, to);
     }
 
     @GetMapping("/{id}")

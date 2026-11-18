@@ -7,8 +7,10 @@ import com.moga.khronosdemo.notifications.EventChangedNotification;
 import com.moga.khronosdemo.notifications.EventDetails;
 import com.moga.khronosdemo.notifications.EventUnassignedNotification;
 import com.moga.khronosdemo.notifications.Recipient;
+import com.moga.khronosdemo.notifications.ShiftDetails;
 import com.moga.khronosdemo.repositories.WorkerEventRepository;
 import com.moga.khronosdemo.repositories.WorkerShiftRepository;
+import org.hibernate.Hibernate;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
@@ -29,13 +31,19 @@ public class EventAssignmentReconciler {
         this.eventPublisher = eventPublisher;
     }
 
-    public void unassignUncoveredEvents(Worker worker) {
+    /**
+     * After one of the worker's shifts was edited, deleted or given to another worker, unassigns the worker
+     * from the events their shifts no longer cover. Only an event inside the shift's interval before or
+     * after the change can have lost its cover, so only those are checked, in one query, however many
+     * assignments the worker has. {@code after} is null when the worker no longer has the shift.
+     */
+    public void unassignUncoveredEvents(Worker worker, ShiftDetails before, ShiftDetails after) {
         workerShiftRepository.flush();
-        for (WorkerEvent workerEvent : workerEventRepository.findByWorker_UserId(worker.getUserId())) {
-            Event event = workerEvent.getEvent();
-            if (!isCovered(worker, event)) {
-                unassign(workerEvent, EventDetails.of(event));
-            }
+        ShiftDetails other = after != null ? after : before;
+        List<WorkerEvent> uncovered = workerEventRepository.findUncoveredByWorkerBetween(worker.getUserId(),
+                before.startDateTime(), before.endDateTime(), other.startDateTime(), other.endDateTime());
+        for (WorkerEvent workerEvent : uncovered) {
+            unassign(workerEvent, EventDetails.of(workerEvent.getEvent()));
         }
     }
 
@@ -55,15 +63,23 @@ public class EventAssignmentReconciler {
         return workerShiftRepository.existsShiftCoveringEvent(
                 worker.getUserId(),
                 event.getZone().getId(),
-                event.getDateTime().toLocalDate(),
-                event.getDateTime().toLocalTime());
+                event.getDateTime());
     }
 
     private void unassign(WorkerEvent workerEvent, EventDetails details) {
-        workerEvent.getEvent().getWorkerEvents().remove(workerEvent);
-        workerEvent.getWorker().getWorkerEvents().remove(workerEvent);
+        removeIfLoaded(workerEvent.getEvent().getWorkerEvents(), workerEvent);
+        removeIfLoaded(workerEvent.getWorker().getWorkerEvents(), workerEvent);
         workerEventRepository.delete(workerEvent);
         eventPublisher.publishEvent(new EventUnassignedNotification(
                 Recipient.of(workerEvent.getWorker()), details, EventUnassignedNotification.NO_COVERING_SHIFT));
+    }
+
+    // A collection that is already loaded must not keep the deleted assignment, or the cascade would save
+    // it again. One that is not loaded is left alone: loading it would read every assignment of the worker
+    // or event just to remove one, and none of the requests that reconcile reads it afterwards.
+    private static void removeIfLoaded(List<WorkerEvent> assignments, WorkerEvent workerEvent) {
+        if (Hibernate.isInitialized(assignments)) {
+            assignments.remove(workerEvent);
+        }
     }
 }

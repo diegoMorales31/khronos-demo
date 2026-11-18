@@ -21,6 +21,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,23 +36,29 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
     private final WorkerShiftMapper workerShiftMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final EventAssignmentReconciler assignmentReconciler;
+    private final TimeEntryShiftLinker timeEntryShiftLinker;
 
     public WorkerShiftServiceImpl(WorkerShiftRepository workerShiftRepository, WorkerRepository workerRepository,
                                   ZoneRepository zoneRepository, WorkerShiftMapper workerShiftMapper,
                                   ApplicationEventPublisher eventPublisher,
-                                  EventAssignmentReconciler assignmentReconciler) {
+                                  EventAssignmentReconciler assignmentReconciler,
+                                  TimeEntryShiftLinker timeEntryShiftLinker) {
         this.workerShiftRepository = workerShiftRepository;
         this.workerRepository = workerRepository;
         this.zoneRepository = zoneRepository;
         this.workerShiftMapper = workerShiftMapper;
         this.eventPublisher = eventPublisher;
         this.assignmentReconciler = assignmentReconciler;
+        this.timeEntryShiftLinker = timeEntryShiftLinker;
     }
 
     @Override
     public List<WorkerShiftResponseDTO> create(List<WorkerShiftRequestDTO> requests) {
 
+        lockWorkers(requests.stream().map(WorkerShiftRequestDTO::workerId).toList());
+
         List<WorkerShiftResponseDTO> created = new ArrayList<>();
+        List<WorkerShift> saved = new ArrayList<>();
 
         for (int i = 0; i < requests.size(); i++) {
             WorkerShiftRequestDTO request = requests.get(i);
@@ -66,11 +74,15 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
             }
 
             WorkerShift workerShift = workerShiftRepository.save(workerShiftMapper.toEntity(request, worker, zone));
+            saved.add(workerShift);
 
             eventPublisher.publishEvent(new ShiftAssignedNotification(Recipient.of(worker), ShiftDetails.of(workerShift)));
 
             created.add(workerShiftMapper.toResponse(workerShift));
         }
+
+        // Entries clocked in before their shift was entered are matched to it now, under the same locks
+        timeEntryShiftLinker.linkToNewShifts(saved);
 
         return created;
     }
@@ -89,44 +101,35 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<WorkerShiftResponseDTO> findByOwner(Long ownerId) {
-        /* return workerShiftRepository.findByWorker_Establishment_Owner_IdOrderByDateAscStartTimeAsc(ownerId).stream()
+    public List<WorkerShiftResponseDTO> findByOwner(Long ownerId, LocalDate from, LocalDate to) {
+        DateRange range = new DateRange(from, to);
+        return workerShiftRepository.findByOwner(ownerId, range.from(), range.to()).stream()
                 .map(workerShiftMapper::toResponse)
                 .toList();
-        */
-
-        return workerShiftRepository.findAll().stream().filter(w ->
-                        w.getWorker().getEstablishment().getOwner().getId()
-                .equals(ownerId))
-                .map(workerShiftMapper::toResponse).toList();
-
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<WorkerShiftResponseDTO> findByWorker(Long workerId) {
-        //return workerShiftRepository.findByWorker_UserId(workerId).stream().map(workerShiftMapper::toResponse).toList();
-
-        return workerShiftRepository.findAll().stream().filter(w -> w.getWorker().getUserId().equals(workerId)).map(workerShiftMapper::toResponse).toList();
-
+    public List<WorkerShiftResponseDTO> findByWorker(Long workerId, LocalDate from, LocalDate to) {
+        DateRange range = new DateRange(from, to);
+        return workerShiftRepository.findByWorker(workerId, range.from(), range.to()).stream()
+                .map(workerShiftMapper::toResponse)
+                .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<WorkerShiftResponseDTO> findByZone(Long zoneId) {
-        //return workerShiftRepository.findByZone_Id(zoneId).stream().map(workerShiftMapper::toResponse).toList();
-
-        return workerShiftRepository.findAll().stream()
-                .filter(w -> w.getZone().getId().equals(zoneId))
+    public List<WorkerShiftResponseDTO> findByZone(Long zoneId, LocalDate from, LocalDate to) {
+        DateRange range = new DateRange(from, to);
+        return workerShiftRepository.findByZone(zoneId, range.from(), range.to()).stream()
                 .map(workerShiftMapper::toResponse)
                 .toList();
-
     }
 
     @Override
     public WorkerShiftResponseDTO update(Long id, WorkerShiftRequestDTO request) {
 
-        WorkerShift workerShift = getWorkerShift(id);
+        WorkerShift workerShift = lockAndGet(id, request.workerId());
         Worker worker = getWorker(request.workerId());
         Zone zone = getZone(request.zoneId());
 
@@ -136,29 +139,32 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
         ShiftDetails before = ShiftDetails.of(workerShift);
 
         workerShiftMapper.updateEntity(workerShift, request, worker, zone);
+        timeEntryShiftLinker.relinkAfterShiftChange(workerShift);
 
         ShiftDetails after = ShiftDetails.of(workerShift);
 
         if (!previousWorker.getUserId().equals(worker.getUserId())) {
             eventPublisher.publishEvent(new ShiftCancelledNotification(Recipient.of(previousWorker), before));
             eventPublisher.publishEvent(new ShiftAssignedNotification(Recipient.of(worker), after));
-            assignmentReconciler.unassignUncoveredEvents(previousWorker);
+            assignmentReconciler.unassignUncoveredEvents(previousWorker, before, null);
         } else if (!before.equals(after)) {
             eventPublisher.publishEvent(new ShiftChangedNotification(Recipient.of(worker), before, after));
-            assignmentReconciler.unassignUncoveredEvents(worker);
+            assignmentReconciler.unassignUncoveredEvents(worker, before, after);
         }
 
         return workerShiftMapper.toResponse(workerShift);
 
     }
 
+    // Time entries matched to the shift are kept; the database clears their link (shift_id)
     @Override
     public void delete(Long id) {
-        WorkerShift workerShift = getWorkerShift(id);
+        WorkerShift workerShift = lockAndGet(id, null);
         Worker worker = workerShift.getWorker();
-        eventPublisher.publishEvent(new ShiftCancelledNotification(Recipient.of(worker), ShiftDetails.of(workerShift)));
+        ShiftDetails details = ShiftDetails.of(workerShift);
+        eventPublisher.publishEvent(new ShiftCancelledNotification(Recipient.of(worker), details));
         workerShiftRepository.delete(workerShift);
-        assignmentReconciler.unassignUncoveredEvents(worker);
+        assignmentReconciler.unassignUncoveredEvents(worker, details, null);
     }
 
     private void validate(WorkerShiftRequestDTO request, Worker worker, Zone zone, Long shiftId) {
@@ -167,20 +173,53 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
             throw new BusinessRuleException("Worker is not active");
         }
 
-        if (!request.endTime().isAfter(request.startTime())) {
-            throw new BusinessRuleException("End time must be after start time");
+        // An end time before the start time means the shift ends the next day (18:00-02:00)
+        if (request.endTime().equals(request.startTime())) {
+            throw new BusinessRuleException("A shift cannot start and end at the same time");
+        }
+
+        if (WorkerShift.durationMinutes(request.startTime(), request.endTime()) > WorkerShift.MAX_DURATION_MINUTES) {
+            throw new BusinessRuleException("A shift cannot last more than "
+                    + WorkerShift.MAX_DURATION_MINUTES / 60 + " hours");
         }
 
         if (!zone.getEstablishment().getId().equals(worker.getEstablishment().getId())) {
             throw new BusinessRuleException("The zone does not belong to the worker's establishment");
         }
 
-        if (workerShiftRepository.existsOverlappingShift(worker.getUserId(), request.date(),
-                request.startTime(), request.endTime(), shiftId)) {
+        LocalDateTime startsAt = request.date().atTime(request.startTime());
+        LocalDateTime endsAt = WorkerShift.endOf(request.date(), request.startTime(), request.endTime());
+        if (workerShiftRepository.existsOverlappingShift(worker.getUserId(), startsAt, endsAt, shiftId)) {
+            String nextDay = WorkerShift.endsNextDay(request.startTime(), request.endTime()) ? " (+1)" : "";
             throw new BusinessRuleException("The worker already has a shift that overlaps with "
-                    + request.startTime() + "-" + request.endTime() + " on " + request.date());
+                    + request.startTime() + "-" + request.endTime() + nextDay + " on " + request.date());
         }
 
+    }
+
+    // The overlap and coverage checks read first and write later. Holding each worker's row lock
+    // until commit makes concurrent requests for the same worker take turns, so a second request
+    // sees the first one's shifts and assignments instead of both passing the checks.
+    private void lockWorkers(List<Long> workerIds) {
+        workerRepository.lockAllById(workerIds);
+    }
+
+    // Locks the shift's worker, and the worker it is being given to if any, in id order, and only then
+    // loads the shift. A second change to the same shift waits for the first and starts from what it
+    // committed, not from a copy read before the wait. If the shift was given to yet another worker
+    // meanwhile, that worker's lock is not held and taking it now could deadlock, so the request is
+    // refused and can be sent again.
+    private WorkerShift lockAndGet(Long id, Long newWorkerId) {
+        Long workerId = workerShiftRepository.findWorkerIdById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("WorkerShift", id));
+        List<Long> lockedIds = newWorkerId != null ? List.of(workerId, newWorkerId) : List.of(workerId);
+        lockWorkers(lockedIds);
+        WorkerShift workerShift = getWorkerShift(id);
+        if (!lockedIds.contains(workerShift.getWorker().getUserId())) {
+            throw new BusinessRuleException("The shift was given to another worker while this request was"
+                    + " waiting; reload it and try again");
+        }
+        return workerShift;
     }
 
     private WorkerShift getWorkerShift(Long id) {

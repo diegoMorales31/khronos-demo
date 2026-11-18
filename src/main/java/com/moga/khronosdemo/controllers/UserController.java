@@ -1,6 +1,7 @@
 package com.moga.khronosdemo.controllers;
 
 import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
+import com.moga.khronosdemo.dtos.request.PasswordResetRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
 import com.moga.khronosdemo.dtos.response.UserResponseDTO;
@@ -33,21 +34,30 @@ public class UserController {
     @PostMapping("/create")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN')")
-    public UserResponseDTO createUser(@Valid @RequestBody UserRequestDTO request, @RequestParam Role role) {
-        return userService.createUser(request, role);
+    public UserResponseDTO createUser(@Valid @RequestBody UserRequestDTO request, @RequestParam Role role,
+                                      @AuthenticationPrincipal SecurityUser principal) {
+        return userService.createUser(request, role, principal.getId());
     }
 
     @PostMapping("/create/worker")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN', 'OWNER')")
-    public UserResponseDTO createWorker(@Valid @RequestBody UserRequestDTO request) {
-        return userService.createWorker(request);
+    public UserResponseDTO createWorker(@Valid @RequestBody UserRequestDTO request,
+                                        @AuthenticationPrincipal SecurityUser principal) {
+        return userService.createWorker(request, principal.getId());
     }
 
     @GetMapping
     @PreAuthorize("hasRole('PLATFORM_ADMIN')")
     public List<UserResponseDTO> findAll() {
         return userService.findAll();
+    }
+
+    // The accounts of everyone who works at the establishment, instead of one request per worker
+    @GetMapping("/establishment/{establishmentId}")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#establishmentId)")
+    public List<UserResponseDTO> findByEstablishment(@PathVariable Long establishmentId) {
+        return userService.findByEstablishment(establishmentId);
     }
 
     @GetMapping("/{id}")
@@ -67,6 +77,14 @@ public class UserController {
     @PreAuthorize("@access.isSelf(#id)")
     public void changePassword(@PathVariable Long id, @Valid @RequestBody ChangePasswordRequestDTO request) {
         userService.changePassword(id, request);
+    }
+
+    // Admins can reset anyone but another admin; owners only the workers of their establishments
+    @PutMapping("/{id}/password/reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("(hasRole('PLATFORM_ADMIN') and !@access.isPlatformAdmin(#id)) or (hasRole('OWNER') and @access.ownsWorker(#id))")
+    public void resetPassword(@PathVariable Long id, @Valid @RequestBody PasswordResetRequestDTO request) {
+        userService.resetPassword(id, request);
     }
 
     @DeleteMapping("/{id}")

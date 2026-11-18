@@ -11,12 +11,15 @@ import com.moga.khronosdemo.notifications.EventDetails;
 import com.moga.khronosdemo.notifications.EventUnassignedNotification;
 import com.moga.khronosdemo.notifications.Recipient;
 import com.moga.khronosdemo.repositories.EventRepository;
+import com.moga.khronosdemo.repositories.WorkerEventRepository;
+import com.moga.khronosdemo.repositories.WorkerRepository;
 import com.moga.khronosdemo.repositories.ZoneRepository;
 import com.moga.khronosdemo.services.EventService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,14 +29,20 @@ public class EventServiceImpl implements EventService {
 
     private final EventRepository eventRepository;
     private final ZoneRepository zoneRepository;
+    private final WorkerRepository workerRepository;
+    private final WorkerEventRepository workerEventRepository;
     private final EventMapper eventMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final EventAssignmentReconciler assignmentReconciler;
 
-    public EventServiceImpl(EventRepository eventRepository, ZoneRepository zoneRepository, EventMapper eventMapper,
-                            ApplicationEventPublisher eventPublisher, EventAssignmentReconciler assignmentReconciler) {
+    public EventServiceImpl(EventRepository eventRepository, ZoneRepository zoneRepository,
+                            WorkerRepository workerRepository, WorkerEventRepository workerEventRepository,
+                            EventMapper eventMapper, ApplicationEventPublisher eventPublisher,
+                            EventAssignmentReconciler assignmentReconciler) {
         this.eventRepository = eventRepository;
         this.zoneRepository = zoneRepository;
+        this.workerRepository = workerRepository;
+        this.workerEventRepository = workerEventRepository;
         this.eventMapper = eventMapper;
         this.eventPublisher = eventPublisher;
         this.assignmentReconciler = assignmentReconciler;
@@ -66,20 +75,26 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<EventResponseDTO> findByZone(Long zoneId) {
-        return eventRepository.findByZone_Id(zoneId).stream().map(eventMapper::toResponse).toList();
+    public List<EventResponseDTO> findByZone(Long zoneId, LocalDate from, LocalDate to) {
+        DateRange range = new DateRange(from, to);
+        return eventRepository.findByZone(zoneId, range.startInclusive(), range.endExclusive()).stream()
+                .map(eventMapper::toResponse)
+                .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<EventResponseDTO> findByEstablishment(Long establishmentId) {
-        return eventRepository.findByZone_Establishment_Id(establishmentId).stream().map(eventMapper::toResponse).toList();
+    public List<EventResponseDTO> findByEstablishment(Long establishmentId, LocalDate from, LocalDate to) {
+        DateRange range = new DateRange(from, to);
+        return eventRepository.findByEstablishment(establishmentId, range.startInclusive(), range.endExclusive()).stream()
+                .map(eventMapper::toResponse)
+                .toList();
     }
 
     @Override
     public EventResponseDTO update(Long id, EventRequestDTO request) {
 
-        Event event = getEvent(id);
+        Event event = lockWithAssignedWorkers(id);
         Zone zone = getZone(request.zoneId());
 
         boolean changesEstablishment = !zone.getEstablishment()
@@ -102,7 +117,7 @@ public class EventServiceImpl implements EventService {
 
     @Override
     public void delete(Long id) {
-        Event event = getEvent(id);
+        Event event = lockWithAssignedWorkers(id);
         EventDetails details = EventDetails.of(event);
         event.getWorkerEvents().forEach(workerEvent -> eventPublisher.publishEvent(
                 new EventUnassignedNotification(Recipient.of(workerEvent.getWorker()), details,
@@ -113,6 +128,21 @@ public class EventServiceImpl implements EventService {
     private Event getEvent(Long id) {
         return eventRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Event", id));
+    }
+
+    // Moving or deleting an event checks its assignments against the workers' shifts, so it takes the
+    // event's lock and then its workers' locks, in the order every path uses (events by id, then workers
+    // by id). An assignment being made to the event, or a shift change of one of its workers, waits until
+    // this change commits and then sees it, instead of acting on the event's old time or zone. Assignments
+    // are only added under the event's lock, so none can appear after the workers are read here.
+    private Event lockWithAssignedWorkers(Long id) {
+        Event event = eventRepository.lockById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Event", id));
+        List<Long> workerIds = workerEventRepository.findWorkerIdsByEventId(id);
+        if (!workerIds.isEmpty()) {
+            workerRepository.lockAllById(workerIds);
+        }
+        return event;
     }
 
     private Zone getZone(Long id) {

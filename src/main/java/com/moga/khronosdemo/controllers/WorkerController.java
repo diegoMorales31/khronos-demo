@@ -1,11 +1,16 @@
 package com.moga.khronosdemo.controllers;
 
+import com.moga.khronosdemo.dtos.request.WorkerActiveRequestDTO;
 import com.moga.khronosdemo.dtos.request.WorkerRequestDTO;
+import com.moga.khronosdemo.dtos.request.WorkerWithUserRequestDTO;
 import com.moga.khronosdemo.dtos.response.WorkerResponseDTO;
+import com.moga.khronosdemo.dtos.response.WorkerWithUserResponseDTO;
+import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.WorkerService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,9 +27,18 @@ public class WorkerController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#request.establishmentId())")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or (@access.ownsEstablishment(#request.establishmentId()) and @access.createdUser(#request.userId()))")
     public WorkerResponseDTO create(@Valid @RequestBody WorkerRequestDTO request) {
         return workerService.create(request);
+    }
+
+    // Creates the WORKER account and links it to the establishment in one transaction
+    @PostMapping("/with-user")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#request.establishmentId())")
+    public WorkerWithUserResponseDTO createWithUser(@Valid @RequestBody WorkerWithUserRequestDTO request,
+                                                    @AuthenticationPrincipal SecurityUser principal) {
+        return workerService.createWithUser(request, principal.getId());
     }
 
     @GetMapping
@@ -58,6 +72,17 @@ public class WorkerController {
         workerService.delete(userId);
     }
 
+    // Sets the flag to the given value, so repeating the request is safe
+    @PutMapping("/{userId}/active")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsWorker(#userId)")
+    public WorkerResponseDTO setActive(@PathVariable Long userId, @Valid @RequestBody WorkerActiveRequestDTO request) {
+        return workerService.setActive(userId, request.active());
+    }
+
+    /**
+     * @deprecated toggles the flag, so a retried request undoes itself. Use PUT /api/workers/{userId}/active.
+     */
+    @Deprecated
     @DeleteMapping("/deactivate/{userId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsWorker(#userId)")

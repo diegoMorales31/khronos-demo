@@ -21,7 +21,9 @@ public class WorkerShiftMapper {
                 workerShift.getDate(),
                 workerShift.getStartTime(),
                 workerShift.getEndTime(),
-                zone != null ? zone.getId() : null
+                zone != null ? zone.getId() : null,
+                workerShift.endsNextDay(),
+                workerShift.getDurationMinutes()
         );
     }
 
