@@ -13,7 +13,7 @@ import com.moga.khronosdemo.mappers.ProductMapper;
 import com.moga.khronosdemo.repositories.EstablishmentRepository;
 import com.moga.khronosdemo.repositories.ProductRepository;
 import com.moga.khronosdemo.repositories.StockMovementRepository;
-import com.moga.khronosdemo.services.CsvFile;
+import com.moga.khronosdemo.dtos.response.CsvFileResponseDTO;
 import com.moga.khronosdemo.services.InventoryReportService;
 import com.moga.khronosdemo.services.ProductService;
 import com.moga.khronosdemo.services.StockMovementService;
@@ -119,10 +119,10 @@ public class InventoryReportServiceImpl implements InventoryReportService {
 
     // Named after today in the establishment's time zone, since it is the stock as of now
     @Override
-    public CsvFile inventoryCsv(Long establishmentId) {
+    public CsvFileResponseDTO inventoryCsv(Long establishmentId) {
         Establishment establishment = getEstablishment(establishmentId);
         List<ProductResponseDTO> products = productService.findByEstablishment(establishmentId, false);
-        return new CsvFile("inventario_" + stockLedger.today(establishment) + ".csv",
+        return new CsvFileResponseDTO("inventario_" + stockLedger.today(establishment) + ".csv",
                 ReportCsvFormatter.inventory(products));
     }
 

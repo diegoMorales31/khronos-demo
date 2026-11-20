@@ -893,16 +893,20 @@ JWT_SECRET=test-only-secret-0123456789-abcdefghijkl RESEND_API_KEY=test ./mvnw t
 
 ```
 src/main/java/com/moga/khronosdemo
-├── config/        OpenAPI, password encoder and clock beans, first admin bootstrap, time-tracking and cash settings
+├── config/        OpenAPI, async and clock beans, the plan interceptor's registration, first admin bootstrap, time-tracking, cash and admin settings
 ├── controllers/   REST endpoints and @PreAuthorize rules
-├── dtos/          Request DTOs (with validation) and response DTOs
+├── dtos/          request/*RequestDTO (with validation) and response/*ResponseDTO, including CSV downloads
 ├── entities/      JPA entities and the Role enum
 ├── exceptions/    Domain exceptions and GlobalExceptionHandler
 ├── notifications/ Notification events and the listener that emails workers
 ├── mappers/       Conversions between entities and DTOs
 ├── repositories/  Spring Data JPA repositories, including the overlap and coverage queries
-├── security/      SecurityConfig, AccessGuard, the user-details service, JWT issuing and checking, login limits
-├── services/      Service interfaces and their implementations (business rules)
+├── security/      SecurityConfig, JwtConfig, PasswordConfig, AccessGuard, the user-details service, plan checks,
+│                  and the TokenService and LoginAttemptService interfaces
+│   └── impl/      TokenServiceImpl (issues JWTs) and LoginAttemptServiceImpl (login limits)
+├── services/      One interface per service, named *Service, including AuthService for sign-in
+│   └── impl/      Their *ServiceImpl classes (business rules), plus the package-private helpers only they use
+│                  (StockLedger, RateSchedule, PlanLimits, CsvWriter, ...)
 └── validation/    Custom constraints: batch size, password length in bytes, time zone ids, rules across fields; the OnCreate group
 
 src/main/resources/db/migration   Flyway migrations

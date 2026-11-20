@@ -9,7 +9,7 @@ import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.security.RequiresPlan;
 import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.BusinessSummaryService;
-import com.moga.khronosdemo.services.CsvFile;
+import com.moga.khronosdemo.dtos.response.CsvFileResponseDTO;
 import com.moga.khronosdemo.services.InventoryReportService;
 import com.moga.khronosdemo.services.ReportService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -151,7 +151,7 @@ public class ReportController {
     @RequiresPlan(PlanFeature.INVENTORY)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#establishmentId)")
     public ResponseEntity<byte[]> inventoryCsv(@PathVariable Long establishmentId) {
-        CsvFile file = inventoryReportService.inventoryCsv(establishmentId);
+        CsvFileResponseDTO file = inventoryReportService.inventoryCsv(establishmentId);
         return csv(file.content(), file.filename());
     }
 

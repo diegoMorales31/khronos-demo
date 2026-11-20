@@ -1,6 +1,6 @@
 package com.moga.khronosdemo.controllers;
 
-import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
+import com.moga.khronosdemo.dtos.request.PasswordChangeRequestDTO;
 import com.moga.khronosdemo.dtos.request.PasswordResetRequestDTO;
 import com.moga.khronosdemo.dtos.request.PlanRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
@@ -80,7 +80,7 @@ public class UserController {
     @PutMapping("/{id}/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("@access.isSelf(#id)")
-    public void changePassword(@PathVariable Long id, @Valid @RequestBody ChangePasswordRequestDTO request) {
+    public void changePassword(@PathVariable Long id, @Valid @RequestBody PasswordChangeRequestDTO request) {
         userService.changePassword(id, request);
     }
 

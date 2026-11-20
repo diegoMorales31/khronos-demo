@@ -1,6 +1,6 @@
 package com.moga.khronosdemo.services;
 
-import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
+import com.moga.khronosdemo.dtos.request.PasswordChangeRequestDTO;
 import com.moga.khronosdemo.dtos.request.PasswordResetRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
@@ -26,7 +26,7 @@ public interface UserService {
 
     UserResponseDTO update(Long id, UserUpdateRequestDTO request);
 
-    void changePassword(Long id, ChangePasswordRequestDTO request);
+    void changePassword(Long id, PasswordChangeRequestDTO request);
 
     void resetPassword(Long id, PasswordResetRequestDTO request);
 

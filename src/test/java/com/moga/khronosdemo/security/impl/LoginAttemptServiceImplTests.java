@@ -1,5 +1,6 @@
-package com.moga.khronosdemo.security;
+package com.moga.khronosdemo.security.impl;
 
+import com.moga.khronosdemo.security.LoginAttemptProperties;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -11,11 +12,11 @@ import java.time.ZoneOffset;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class LoginAttemptServiceTests {
+class LoginAttemptServiceImplTests {
 
     private final MutableClock clock = new MutableClock();
-    private final LoginAttemptService service =
-            new LoginAttemptService(new LoginAttemptProperties(3, Duration.ofMinutes(15), 10), clock);
+    private final LoginAttemptServiceImpl service =
+            new LoginAttemptServiceImpl(new LoginAttemptProperties(3, Duration.ofMinutes(15), 10), clock);
 
     @Test
     void blocksThePairAfterTheMaximumFailuresUntilTheWindowEnds() {
@@ -92,7 +93,7 @@ class LoginAttemptServiceTests {
         // The attack: fill the table with made-up usernames from the same address, going through
         // the same check as the login endpoint, so that ana's blocked pair is dropped
         int accepted = 0;
-        for (int i = 0; i < LoginAttemptService.MAX_TRACKED + 500; i++) {
+        for (int i = 0; i < LoginAttemptServiceImpl.MAX_TRACKED + 500; i++) {
             if (service.secondsUntilAllowed("made-up" + i, "10.0.0.1") == 0) {
                 service.recordFailure("made-up" + i, "10.0.0.1");
                 accepted++;
@@ -113,23 +114,23 @@ class LoginAttemptServiceTests {
         }
 
         // A flood of pairs and addresses with one failure each, none of them blocked
-        for (int i = 0; i < LoginAttemptService.MAX_TRACKED + 500; i++) {
+        for (int i = 0; i < LoginAttemptServiceImpl.MAX_TRACKED + 500; i++) {
             service.recordFailure("made-up" + i, ip(i));
         }
 
-        assertEquals(LoginAttemptService.MAX_TRACKED, service.trackedPairs());
-        assertEquals(LoginAttemptService.MAX_TRACKED, service.trackedIps());
+        assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, service.trackedPairs());
+        assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, service.trackedIps());
         assertEquals(15 * 60, service.secondsUntilAllowed("ana", "10.0.0.1"));
         assertEquals(15 * 60, service.secondsUntilAllowed("someone-else", "10.0.0.2"));
     }
 
     @Test
     void keepsAtMostTheMaximumNumberOfPairs() {
-        for (int i = 0; i < LoginAttemptService.MAX_TRACKED + 500; i++) {
+        for (int i = 0; i < LoginAttemptServiceImpl.MAX_TRACKED + 500; i++) {
             service.recordFailure("user" + i, ip(i));
         }
-        assertEquals(LoginAttemptService.MAX_TRACKED, service.trackedPairs());
-        assertEquals(LoginAttemptService.MAX_TRACKED, service.trackedIps());
+        assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, service.trackedPairs());
+        assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, service.trackedIps());
 
         // Once their window is over, old pairs make room before any recent one is dropped
         clock.advance(Duration.ofMinutes(16));
@@ -140,29 +141,29 @@ class LoginAttemptServiceTests {
 
     @Test
     void staysBoundedWhenEveryPairIsBlocked() {
-        LoginAttemptService strict =
-                new LoginAttemptService(new LoginAttemptProperties(1, Duration.ofMinutes(15), 1), clock);
+        LoginAttemptServiceImpl strict =
+                new LoginAttemptServiceImpl(new LoginAttemptProperties(1, Duration.ofMinutes(15), 1), clock);
 
-        for (int i = 0; i < LoginAttemptService.MAX_TRACKED + 500; i++) {
+        for (int i = 0; i < LoginAttemptServiceImpl.MAX_TRACKED + 500; i++) {
             strict.recordFailure("user" + i, ip(i));
         }
 
         // With nothing else to drop, the least recently seen blocked entries give way
-        assertEquals(LoginAttemptService.MAX_TRACKED, strict.trackedPairs());
-        assertEquals(LoginAttemptService.MAX_TRACKED, strict.trackedIps());
+        assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, strict.trackedPairs());
+        assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, strict.trackedIps());
         assertEquals(0, strict.secondsUntilAllowed("user0", ip(0)));
-        int last = LoginAttemptService.MAX_TRACKED + 499;
+        int last = LoginAttemptServiceImpl.MAX_TRACKED + 499;
         assertEquals(15 * 60, strict.secondsUntilAllowed("user" + last, ip(last)));
     }
 
     @Test
     void rejectsSettingsThatWouldNeverBlockOrNeverUnblock() {
         assertThrows(IllegalStateException.class,
-                () -> new LoginAttemptService(new LoginAttemptProperties(0, Duration.ofMinutes(15), 50)));
+                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(0, Duration.ofMinutes(15), 50)));
         assertThrows(IllegalStateException.class,
-                () -> new LoginAttemptService(new LoginAttemptProperties(5, Duration.ofMinutes(15), 0)));
+                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(5, Duration.ofMinutes(15), 0)));
         assertThrows(IllegalStateException.class,
-                () -> new LoginAttemptService(new LoginAttemptProperties(5, Duration.ZERO, 50)));
+                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(5, Duration.ZERO, 50)));
     }
 
     private void fail(int times, String username, String ip) {

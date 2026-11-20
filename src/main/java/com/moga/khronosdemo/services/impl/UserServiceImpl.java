@@ -1,6 +1,6 @@
 package com.moga.khronosdemo.services.impl;
 
-import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
+import com.moga.khronosdemo.dtos.request.PasswordChangeRequestDTO;
 import com.moga.khronosdemo.dtos.request.PasswordResetRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
@@ -138,7 +138,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void changePassword(Long id, ChangePasswordRequestDTO request) {
+    public void changePassword(Long id, PasswordChangeRequestDTO request) {
 
         User user = getUser(id);
 

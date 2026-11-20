@@ -1,4 +1,4 @@
-package com.moga.khronosdemo.config;
+package com.moga.khronosdemo.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
