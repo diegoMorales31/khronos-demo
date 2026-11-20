@@ -33,7 +33,7 @@ And it keeps the inventory of drinks and supplies: suppliers, products, a stock 
 
 | Entity | What it represents |
 |---|---|
-| **User** | An account that can log in. It has a username, password, name, email, optional phone number, a **role** and who created it. |
+| **User** | An account that can log in. It has a username, password, name, email, optional phone number, a **role** and who created it. Owners also have a **plan** (see [Plans](#plans)). |
 | **Establishment** | A venue, with a name, a unique address and a time zone (`Europe/Madrid` by default). Each one belongs to one user with the `OWNER` role. |
 | **Zone** | An area inside an establishment. Zone names are unique within their establishment. |
 | **Worker** | A user with the `WORKER` role who works at one establishment. The worker shares its ID with its user, and it can be marked active or inactive. |
@@ -59,12 +59,38 @@ Deleting a parent also deletes everything under it. For example, deleting an est
 | Role | What they can do |
 |---|---|
 | `PLATFORM_ADMIN` | Everything. This is the only role that creates users of any role and creates or deletes establishments. |
-| `OWNER` | Manages their own establishments: edits them and manages their zones, workers, shifts, events and assignments. They can create users with the `WORKER` role, link to their establishments only the accounts they created, and reset their workers' passwords. They enter, clock out, correct and void their workers' time entries, set their hourly rates and read the reports and CSV exports of their establishments. They also keep their establishments' cash closings and expenses and read the business summary, and keep their inventory: suppliers, products, stock movements, counts, purchase orders and the inventory report. |
+| `OWNER` | Manages their own establishments, within what their [plan](#plans) includes: edits them and manages their zones, workers, shifts, events and assignments. They can create users with the `WORKER` role, link to their establishments only the accounts they created, and reset their workers' passwords. They enter, clock out, correct and void their workers' time entries, set their hourly rates and read the reports and CSV exports of their establishments. They also keep their establishments' cash closings and expenses and read the business summary, and keep their inventory: suppliers, products, stock movements, counts, purchase orders and the inventory report. |
 | `WORKER` | Can read their own profile, shifts and event assignments, and see the zones and events of the establishment they work at and who is assigned to each event. Listing the establishment's assignments gives them only their own. They see who the owner is but not the owner's email or phone. They can change their own password. They clock themselves in and out, and read their own time entries, their history, their daily report and its CSV. They never see hourly rates or costs, not even their own, nor anything about cash closings, expenses, the business summary or the inventory (**403**). |
 
 Each endpoint checks access with `@PreAuthorize` rules backed by `AccessGuard`. A request for data that belongs to another owner returns **403**.
 
 The paths that only owners and admins use, `/api/cash-closings/**`, `/api/expenses/**`, `/api/reports/establishment/**` (which includes the inventory report and its exports), `/api/workers/{workerId}/rates/**`, `/api/time-entries/establishment/**` and the inventory's `/api/suppliers/**`, `/api/products/**`, `/api/stock-movements/**`, `/api/stock-counts/**` and `/api/purchase-orders/**`, also turn a worker away by URL, before the request is read: a worker gets **403** there even when the body or the parameters are invalid, never a **400** describing them. `/api/reports/worker/**` is not one of them, since workers read their own daily report there.
+
+## Plans
+
+Every owner has a plan, and nobody else does (the database checks both). It decides how many active workers the owner can have and which parts of the API they can use:
+
+| Plan | `plan` | Active workers | Includes |
+|---|---|---|---|
+| Khronos | `BASIC` | up to 50 | Establishments, zones, shifts, events and assignments, the team, hourly rates, time entries and the hours reports |
+| Khronos Plus | `PLUS` | up to 100 | All of the above, plus the cash (feature `CASH`): cash closings, expenses, the business summary and their CSV exports |
+| Khronos Ultra | `ULTRA` | no limit | All of the above, plus the inventory (feature `INVENTORY`): suppliers, products, stock movements, stock counts, purchase orders, the inventory report and its CSV exports |
+
+**Who sets it.** Only a platform admin: `POST /api/users/create?role=OWNER&plan=PLUS` (an owner created without `plan` gets `BASIC`; `plan` with any other role answers **400**) and `PUT /api/users/{id}/plan` `{ "plan": "ULTRA" }`. The owner reads theirs in `GET /api/users/me` (`plan`, `null` for anyone who is not an owner) and, with its usage, in `GET /api/users/{id}/plan`, which only the owner and admins can call:
+
+```json
+{ "plan": "PLUS", "maxActiveWorkers": 100, "activeWorkers": 31, "features": ["CASH"] }
+```
+
+`maxActiveWorkers` is `null` on Ultra. A change applies from the owner's next request, with the token they already have.
+
+**Features.** An owner calling an endpoint of a feature their plan doesn't include gets **403** with the code `PLAN_FEATURE_UNAVAILABLE`, and `details.feature` and `details.plan`. The check runs before the request body is read, so it comes before any **400**. Which endpoints belong to which feature is marked with `@RequiresPlan` on the controllers, and `PlanFeatureInterceptor` checks it. It only looks at the caller's own plan; who may touch which establishment is still up to each endpoint's `@PreAuthorize`. A worker gets the usual **403** there, and a platform admin is never limited by an owner's plan.
+
+**The worker limit** counts the **active** workers across all of the owner's establishments. Adding a worker (`POST /api/workers`, `POST /api/workers/with-user`), reactivating one (`PUT /api/workers/{id}/active`, or the deprecated toggle) and moving an active worker to another owner's establishment answer **409** `WORKER_LIMIT_REACHED` when one more doesn't fit, with `details.plan`, `details.maxActiveWorkers` and `details.activeWorkers`; the refused request leaves no account behind. Deactivating always works and frees a place. Moving an owner to a plan whose limit is below their active workers answers the same **409**. Each of these changes locks the owner's row first, so two sent at once take turns and can't both fit under the limit.
+
+**Moving to a smaller plan** keeps everything: the cash closings, expenses and inventory of a plan that no longer includes them stay in the database and come back with a bigger plan.
+
+**Owners that existed before plans** were moved to `ULTRA` by the migration (`V16__owner_plans.sql`), so they lost nothing they could already do. An admin can move them to another plan afterwards.
 
 ## Authentication
 
@@ -633,7 +659,7 @@ All endpoints are under `/api` and need a bearer token, except `POST /api/auth/l
 | Resource | Base path | Notes |
 |---|---|---|
 | Auth | `/api/auth` | `POST /login` returns a token valid for one hour. |
-| Users | `/api/users` | `GET /me` returns the logged-in user. `POST /create?role=...` is for admins only. `POST /create/worker` creates a user with the `WORKER` role. `PUT /{id}/password` changes the password and revokes the user's older tokens. `PUT /{id}/password/reset` lets an admin or owner set a new one. `GET /establishment/{id}` lists the accounts of an establishment's workers. |
+| Users | `/api/users` | `GET /me` returns the logged-in user, with an owner's `plan`. `POST /create?role=...&plan=...` is for admins only. `GET /{id}/plan` and `PUT /{id}/plan` read and change an owner's plan (see [Plans](#plans)). `POST /create/worker` creates a user with the `WORKER` role. `PUT /{id}/password` changes the password and revokes the user's older tokens. `PUT /{id}/password/reset` lets an admin or owner set a new one. `GET /establishment/{id}` lists the accounts of an establishment's workers. |
 | Establishments | `/api/establishments` | You can also list them by owner: `/owner/{ownerId}`. |
 | Zones | `/api/zones` | You can also list them by establishment: `/establishment/{id}`. |
 | Workers | `/api/workers` | Identified by their user ID. You can list them by establishment. `POST /with-user` creates the account and links it in one step. `PUT /{id}/active` turns a worker on or off. |
@@ -754,7 +780,7 @@ Every error comes back in the same shape:
 
 `fieldErrors` only appears on validation errors.
 
-`code` only appears on the errors in the table below: the authentication errors, the cash closing and expense conflicts, and the inventory conflicts. It is a stable value for clients to tell these cases apart, while the wording of `message` may change. Clients should treat a missing or unknown `code` like any other error with that status.
+`code` only appears on the errors in the table below: the authentication errors, the cash closing and expense conflicts, the inventory conflicts and the refusals of the owner's plan. It is a stable value for clients to tell these cases apart, while the wording of `message` may change. Clients should treat a missing or unknown `code` like any other error with that status.
 
 ```json
 {
@@ -793,8 +819,10 @@ Every error comes back in the same shape:
 | `PURCHASE_ORDER_NOTHING_RECEIVED` | 409 | Every line of the receipt is 0; cancel the order instead |
 | `PURCHASE_ORDER_NO_TOTAL` | 409 | An expense was asked for but the total received is unknown or 0 |
 | `EXPENSE_FROM_PURCHASE_ORDER` | 409 | Editing an expense that receiving a purchase order created; delete it and enter it again instead. `details.purchaseOrderId` is that order |
+| `WORKER_LIMIT_REACHED` | 409 | Adding or reactivating a worker past the active workers the owner's plan allows, or moving an owner to a plan that allows fewer than they have; `details.plan`, `details.maxActiveWorkers` and `details.activeWorkers` |
+| `PLAN_FEATURE_UNAVAILABLE` | 403 | An owner called an endpoint of a feature their plan doesn't include; `details.feature` (`CASH` or `INVENTORY`) and `details.plan` |
 
-`details` only comes with `CASH_CLOSING_EXISTS`, `CASH_DAY_CLOSED` and `EXPENSE_FROM_PURCHASE_ORDER`, and is left out otherwise. It holds what the error is about as strings, so clients don't have to parse the message: `date`, the business day as `YYYY-MM-DD`, for the first two, and `purchaseOrderId`, the order's id as a string such as `"12"`, for the third:
+`details` only comes with `CASH_CLOSING_EXISTS`, `CASH_DAY_CLOSED`, `EXPENSE_FROM_PURCHASE_ORDER`, `WORKER_LIMIT_REACHED` and `PLAN_FEATURE_UNAVAILABLE`, and is left out otherwise. It holds what the error is about as strings, so clients don't have to parse the message: `date`, the business day as `YYYY-MM-DD`, for the first two, `purchaseOrderId`, the order's id as a string such as `"12"`, for the third, and the fields named in the table for the plan's two:
 
 ```json
 {

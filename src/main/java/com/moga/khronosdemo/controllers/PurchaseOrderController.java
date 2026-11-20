@@ -3,7 +3,9 @@ package com.moga.khronosdemo.controllers;
 import com.moga.khronosdemo.dtos.request.PurchaseOrderReceiveRequestDTO;
 import com.moga.khronosdemo.dtos.request.PurchaseOrderRequestDTO;
 import com.moga.khronosdemo.dtos.response.PurchaseOrderResponseDTO;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
 import com.moga.khronosdemo.entities.enums.PurchaseOrderStatus;
+import com.moga.khronosdemo.security.RequiresPlan;
 import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.PurchaseOrderService;
 import com.moga.khronosdemo.validation.OnCreate;
@@ -23,6 +25,7 @@ import java.util.List;
  * read or change them, and the supplier and products named in a body must be theirs too.
  */
 @RestController
+@RequiresPlan(PlanFeature.INVENTORY)
 @RequestMapping("/api/purchase-orders")
 public class PurchaseOrderController {
 

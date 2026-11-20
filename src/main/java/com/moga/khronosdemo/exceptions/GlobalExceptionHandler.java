@@ -130,6 +130,14 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, message, code, request, null);
     }
 
+    // Before the owner's own data is looked at, so it says nothing about what exists
+    @ExceptionHandler(PlanFeatureUnavailableException.class)
+    public ResponseEntity<ErrorResponseDTO> handlePlanFeatureUnavailable(PlanFeatureUnavailableException ex,
+                                                                         HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), ErrorCode.PLAN_FEATURE_UNAVAILABLE, request, null,
+                Map.of("feature", ex.getFeature().name(), "plan", ex.getPlan().name()));
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponseDTO> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
         return build(HttpStatus.FORBIDDEN, "You do not have permission to perform this action", request, null);

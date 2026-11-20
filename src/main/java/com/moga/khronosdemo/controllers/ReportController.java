@@ -4,7 +4,9 @@ import com.moga.khronosdemo.dtos.response.BusinessSummaryResponseDTO;
 import com.moga.khronosdemo.dtos.response.HoursReportResponseDTO;
 import com.moga.khronosdemo.dtos.response.InventoryReportResponseDTO;
 import com.moga.khronosdemo.dtos.response.WorkerDaysReportResponseDTO;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
 import com.moga.khronosdemo.entities.enums.Role;
+import com.moga.khronosdemo.security.RequiresPlan;
 import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.BusinessSummaryService;
 import com.moga.khronosdemo.services.CsvFile;
@@ -95,6 +97,7 @@ public class ReportController {
 
     // Totals, every day of the range and the period of the same length right before it
     @GetMapping("/establishment/{establishmentId}/summary")
+    @RequiresPlan(PlanFeature.CASH)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#establishmentId)")
     public BusinessSummaryResponseDTO summary(@PathVariable Long establishmentId,
                                               @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -104,6 +107,7 @@ public class ReportController {
 
     // One row per cash closing, earliest day first
     @GetMapping("/establishment/{establishmentId}/cash-closings.csv")
+    @RequiresPlan(PlanFeature.CASH)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#establishmentId)")
     public ResponseEntity<byte[]> cashClosingsCsv(@PathVariable Long establishmentId,
                                                   @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -114,6 +118,7 @@ public class ReportController {
 
     // One row per expense, oldest first
     @GetMapping("/establishment/{establishmentId}/expenses.csv")
+    @RequiresPlan(PlanFeature.CASH)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#establishmentId)")
     public ResponseEntity<byte[]> expensesCsv(@PathVariable Long establishmentId,
                                               @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -123,6 +128,7 @@ public class ReportController {
 
     // One row per day of the summary
     @GetMapping("/establishment/{establishmentId}/summary.csv")
+    @RequiresPlan(PlanFeature.CASH)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#establishmentId)")
     public ResponseEntity<byte[]> summaryCsv(@PathVariable Long establishmentId,
                                              @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -132,6 +138,7 @@ public class ReportController {
 
     // The stock as of now and the values of the movements of the range
     @GetMapping("/establishment/{establishmentId}/inventory")
+    @RequiresPlan(PlanFeature.INVENTORY)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#establishmentId)")
     public InventoryReportResponseDTO inventory(@PathVariable Long establishmentId,
                                                 @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -141,6 +148,7 @@ public class ReportController {
 
     // One row per active product with its stock as of now, by category and then name
     @GetMapping("/establishment/{establishmentId}/inventory.csv")
+    @RequiresPlan(PlanFeature.INVENTORY)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#establishmentId)")
     public ResponseEntity<byte[]> inventoryCsv(@PathVariable Long establishmentId) {
         CsvFile file = inventoryReportService.inventoryCsv(establishmentId);
@@ -149,6 +157,7 @@ public class ReportController {
 
     // One row per stock movement of the range, oldest first
     @GetMapping("/establishment/{establishmentId}/stock-movements.csv")
+    @RequiresPlan(PlanFeature.INVENTORY)
     @PreAuthorize("hasRole('PLATFORM_ADMIN') or @access.ownsEstablishment(#establishmentId)")
     public ResponseEntity<byte[]> stockMovementsCsv(@PathVariable Long establishmentId,
                                                     @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

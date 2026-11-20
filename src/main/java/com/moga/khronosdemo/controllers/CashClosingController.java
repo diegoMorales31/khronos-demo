@@ -5,6 +5,8 @@ import com.moga.khronosdemo.dtos.request.CashClosingReopenRequestDTO;
 import com.moga.khronosdemo.dtos.request.CashClosingRequestDTO;
 import com.moga.khronosdemo.dtos.response.CashClosingChangeResponseDTO;
 import com.moga.khronosdemo.dtos.response.CashClosingResponseDTO;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
+import com.moga.khronosdemo.security.RequiresPlan;
 import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.CashClosingService;
 import com.moga.khronosdemo.validation.OnCreate;
@@ -25,6 +27,7 @@ import java.util.List;
  * or change closings; workers never see them.
  */
 @RestController
+@RequiresPlan(PlanFeature.CASH)
 @RequestMapping("/api/cash-closings")
 public class CashClosingController {
 

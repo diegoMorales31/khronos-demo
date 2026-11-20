@@ -1,5 +1,6 @@
 package com.moga.khronosdemo.dtos.response;
 
+import com.moga.khronosdemo.entities.enums.Plan;
 import com.moga.khronosdemo.entities.enums.Role;
 
 public record UserResponseDTO(
@@ -9,6 +10,8 @@ public record UserResponseDTO(
         String lastName,
         String phoneNumber,
         String email,
-        Role role
+        Role role,
+        // Only owners have one; null for everyone else
+        Plan plan
 ) {
 }

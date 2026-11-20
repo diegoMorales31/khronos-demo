@@ -4,10 +4,14 @@ import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
 import com.moga.khronosdemo.dtos.request.PasswordResetRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
+import com.moga.khronosdemo.dtos.response.PlanResponseDTO;
 import com.moga.khronosdemo.dtos.response.UserResponseDTO;
+import com.moga.khronosdemo.entities.enums.Plan;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
 import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.entities.User;
 import com.moga.khronosdemo.exceptions.BusinessRuleException;
+import com.moga.khronosdemo.exceptions.InvalidRequestException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;
 import com.moga.khronosdemo.mappers.UserMapper;
 import com.moga.khronosdemo.repositories.CashClosingRepository;
@@ -24,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -40,13 +45,14 @@ public class UserServiceImpl implements UserService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final PlanLimits planLimits;
 
     public UserServiceImpl(UserRepository userRepository, WorkerRepository workerRepository,
                            EstablishmentRepository establishmentRepository, TimeEntryRepository timeEntryRepository,
                            CashClosingRepository cashClosingRepository, ExpenseRepository expenseRepository,
                            StockMovementRepository stockMovementRepository,
                            PurchaseOrderRepository purchaseOrderRepository, UserMapper userMapper,
-                           PasswordEncoder passwordEncoder) {
+                           PasswordEncoder passwordEncoder, PlanLimits planLimits) {
         this.userRepository = userRepository;
         this.workerRepository = workerRepository;
         this.establishmentRepository = establishmentRepository;
@@ -57,19 +63,23 @@ public class UserServiceImpl implements UserService {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
+        this.planLimits = planLimits;
     }
 
     @Override
-    public UserResponseDTO createUser(UserRequestDTO request, Role role, Long creatorId) {
-        return createWithRole(request, role, creatorId);
+    public UserResponseDTO createUser(UserRequestDTO request, Role role, Plan plan, Long creatorId) {
+        if (plan != null && role != Role.OWNER) {
+            throw new InvalidRequestException("Only owners have a plan");
+        }
+        return createWithRole(request, role, role == Role.OWNER && plan == null ? Plan.BASIC : plan, creatorId);
     }
 
     @Override
     public UserResponseDTO createWorker(UserRequestDTO request, Long creatorId) {
-        return createWithRole(request, Role.WORKER, creatorId);
+        return createWithRole(request, Role.WORKER, null, creatorId);
     }
 
-    private UserResponseDTO createWithRole(UserRequestDTO request, Role role, Long creatorId) {
+    private UserResponseDTO createWithRole(UserRequestDTO request, Role role, Plan plan, Long creatorId) {
 
         if (userRepository.existsByUsername(request.username())) {
             throw new BusinessRuleException("Username already in use");
@@ -84,6 +94,7 @@ public class UserServiceImpl implements UserService {
         }
 
         User user = userMapper.toEntity(request, role);
+        user.setPlan(plan);
         if (creatorId != null) {
             user.setCreatedBy(userRepository.getReferenceById(creatorId));
         }
@@ -191,6 +202,36 @@ public class UserServiceImpl implements UserService {
                 () -> userRepository.delete(user)
         );
 
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PlanResponseDTO findPlan(Long ownerId) {
+        User owner = getOwner(ownerId);
+        return toPlanResponse(owner.getPlan(), workerRepository.countActiveByOwner(ownerId));
+    }
+
+    // Moving to a smaller plan keeps the data of the features it leaves out, which come back with a
+    // bigger plan, but the owner's active workers must fit the new limit
+    @Override
+    public PlanResponseDTO changePlan(Long ownerId, Plan plan) {
+        User owner = getOwner(ownerId);
+        planLimits.checkFits(ownerId, plan);
+        owner.setPlan(plan);
+        return toPlanResponse(plan, workerRepository.countActiveByOwner(ownerId));
+    }
+
+    private User getOwner(Long id) {
+        User user = getUser(id);
+        if (user.getRole() != Role.OWNER) {
+            throw new BusinessRuleException("Only owners have a plan");
+        }
+        return user;
+    }
+
+    private static PlanResponseDTO toPlanResponse(Plan plan, long activeWorkers) {
+        List<PlanFeature> features = Arrays.stream(PlanFeature.values()).filter(plan::includes).toList();
+        return new PlanResponseDTO(plan, plan.getMaxActiveWorkers(), activeWorkers, features);
     }
 
     private User getUser(Long id) {

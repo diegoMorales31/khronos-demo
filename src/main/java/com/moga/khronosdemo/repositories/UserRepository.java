@@ -1,7 +1,9 @@
 package com.moga.khronosdemo.repositories;
 
 import com.moga.khronosdemo.entities.User;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -27,6 +29,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
             where u.username = :username
             """)
     Optional<AccountWithStatus> findAccountByUsername(@Param("username") String username);
+
+    // Locks the user's row until the transaction ends. Only an owner's is ever locked, by PlanLimits, so
+    // adding active workers and changing the plan take turns
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    Optional<User> lockById(@Param("id") Long id);
 
     boolean existsByUsername(String username);
 

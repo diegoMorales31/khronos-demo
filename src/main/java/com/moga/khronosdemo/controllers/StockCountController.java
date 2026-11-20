@@ -2,6 +2,8 @@ package com.moga.khronosdemo.controllers;
 
 import com.moga.khronosdemo.dtos.request.StockCountRequestDTO;
 import com.moga.khronosdemo.dtos.response.StockMovementResponseDTO;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
+import com.moga.khronosdemo.security.RequiresPlan;
 import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.StockCountService;
 import jakarta.validation.Valid;
@@ -22,6 +24,7 @@ import java.util.List;
  * one, and every product named must be theirs too.
  */
 @RestController
+@RequiresPlan(PlanFeature.INVENTORY)
 @RequestMapping("/api/stock-counts")
 public class StockCountController {
 

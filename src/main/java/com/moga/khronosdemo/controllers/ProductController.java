@@ -3,6 +3,8 @@ package com.moga.khronosdemo.controllers;
 import com.moga.khronosdemo.dtos.request.ProductActiveRequestDTO;
 import com.moga.khronosdemo.dtos.request.ProductRequestDTO;
 import com.moga.khronosdemo.dtos.response.ProductResponseDTO;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
+import com.moga.khronosdemo.security.RequiresPlan;
 import com.moga.khronosdemo.services.ProductService;
 import com.moga.khronosdemo.validation.OnCreate;
 import jakarta.validation.Valid;
@@ -19,6 +21,7 @@ import java.util.List;
  * in a body must be the caller's too.
  */
 @RestController
+@RequiresPlan(PlanFeature.INVENTORY)
 @RequestMapping("/api/products")
 public class ProductController {
 

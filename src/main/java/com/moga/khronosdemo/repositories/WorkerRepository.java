@@ -15,6 +15,10 @@ public interface WorkerRepository extends JpaRepository<Worker, Long> {
 
     List<Worker> findByEstablishment_Id(Long establishmentId);
 
+    // Active workers across every establishment of the owner, which is what the plan's limit counts
+    @Query("select count(w) from Worker w where w.establishment.owner.id = :ownerId and w.isActive = true")
+    long countActiveByOwner(@Param("ownerId") Long ownerId);
+
     // For the reports, which show each worker's name
     @Query("select w from Worker w join fetch w.user where w.establishment.id = :establishmentId order by w.userId")
     List<Worker> findWithUserByEstablishment(@Param("establishmentId") Long establishmentId);

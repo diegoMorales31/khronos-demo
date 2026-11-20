@@ -2,7 +2,9 @@ package com.moga.khronosdemo.controllers;
 
 import com.moga.khronosdemo.dtos.request.StockMovementRequestDTO;
 import com.moga.khronosdemo.dtos.response.StockMovementResponseDTO;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
 import com.moga.khronosdemo.entities.enums.StockMovementType;
+import com.moga.khronosdemo.security.RequiresPlan;
 import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.StockMovementService;
 import jakarta.validation.Valid;
@@ -21,6 +23,7 @@ import java.util.List;
  * establishment's owner or an admin can read or record them.
  */
 @RestController
+@RequiresPlan(PlanFeature.INVENTORY)
 @RequestMapping("/api/stock-movements")
 public class StockMovementController {
 

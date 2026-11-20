@@ -2,6 +2,8 @@ package com.moga.khronosdemo.controllers;
 
 import com.moga.khronosdemo.dtos.request.SupplierRequestDTO;
 import com.moga.khronosdemo.dtos.response.SupplierResponseDTO;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
+import com.moga.khronosdemo.security.RequiresPlan;
 import com.moga.khronosdemo.services.SupplierService;
 import com.moga.khronosdemo.validation.OnCreate;
 import jakarta.validation.Valid;
@@ -17,6 +19,7 @@ import java.util.List;
  * or change them; workers never see them.
  */
 @RestController
+@RequiresPlan(PlanFeature.INVENTORY)
 @RequestMapping("/api/suppliers")
 public class SupplierController {
 
