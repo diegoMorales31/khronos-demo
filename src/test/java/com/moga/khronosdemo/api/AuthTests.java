@@ -214,6 +214,26 @@ class AuthTests extends IntegrationTest {
         login("forgetful", PASSWORD, ip).andExpect(status().isOk());
     }
 
+    @Test
+    void blocksAUsernameGuessedFromManyIpsButNotFromWhereItSignedInBefore() throws Exception {
+        createAdmin("spread-target");
+        String home = "203.0.113.40";
+        login("spread-target", PASSWORD, home).andExpect(status().isOk());
+
+        // Ten guesses, one from each address: no pair and no address reaches its own limit...
+        for (int i = 1; i <= 10; i++) {
+            login("spread-target", "wrong-password", "198.18.0." + i).andExpect(status().isUnauthorized());
+        }
+
+        // ...but the username does, so a new address is refused even with the right password...
+        login("spread-target", PASSWORD, "198.18.0.11")
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists(HttpHeaders.RETRY_AFTER))
+                .andExpect(jsonPath("$.code").value("TOO_MANY_ATTEMPTS"));
+        // ...while the address it signed in from before still gets in, so the attack cannot lock the user out
+        login("spread-target", PASSWORD, home).andExpect(status().isOk());
+    }
+
     private void deactivatedWorker(String username) {
         Worker worker = createWorker(createEstablishment(createOwner(uniqueName("owner"))), username);
         worker.setActive(false);

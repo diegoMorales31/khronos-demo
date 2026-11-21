@@ -8,6 +8,8 @@ import java.time.Duration;
 public record LoginAttemptProperties(
         int maxAttempts,
         Duration window,
-        int maxAttemptsPerIp
+        int maxAttemptsPerIp,
+        int maxAttemptsPerUser,
+        Duration userWindow
 ) {
 }

@@ -130,7 +130,9 @@ The user is reloaded from the database on every request, so some changes take ef
 
 HTTP Basic is no longer accepted: only the login takes a password.
 
-**Failed logins are limited.** After 5 failed attempts for the same username from the same IP address within 15 minutes, `POST /api/auth/login` answers **429 Too Many Requests** with a `Retry-After` header (in seconds) until those 15 minutes are over, even if the password is right. A successful login clears the count. Each IP address also has its own limit, whatever the usernames: after 50 failed attempts within 15 minutes, every login from it answers 429 until those 15 minutes are over. A successful login does not clear that count. The counts are kept in memory, per instance, and reset on restart; failures that stay under the limits can't push a blocked username or address out of memory. Behind a reverse proxy, set `SERVER_FORWARD_HEADERS_STRATEGY=native` so the API sees the client's IP and not the proxy's; otherwise every client shares the proxy's address and its limit.
+**Failed logins are limited.** After 5 failed attempts for the same username from the same IP address within 15 minutes, `POST /api/auth/login` answers **429 Too Many Requests** with a `Retry-After` header (in seconds) until those 15 minutes are over, even if the password is right. A successful login clears the count. Each IP address also has its own limit, whatever the usernames: after 50 failed attempts within 15 minutes, every login from it answers 429 until those 15 minutes are over. A successful login does not clear that count. Each username has a limit too, whatever the IPs: after 10 failed attempts within an hour, logins for it answer 429 until that hour is over, so guesses spread over many addresses still run out. That limit would also let anyone lock a user out on purpose, so it skips any IP the username signed in from successfully in the last 30 days: the user's own devices keep working, and a device with a session never needs the login anyway. A successful login does not clear the username's count either. The counts are kept in memory, per instance, and reset on restart, so run a single instance; failures that stay under the limits can't push a blocked username or address out of memory.
+
+**The client IP behind a proxy.** `server.forward-headers-strategy` is `native` by default (`SERVER_FORWARD_HEADERS_STRATEGY`), so behind a reverse proxy (Fly.io, Render, Caddy...) the limits see each client's IP and not the proxy's; otherwise every client would share the proxy's address, and 50 failures from anyone would block every login. Tomcat reads `X-Forwarded-For` only on connections from a private address (10.x, 172.16-31.x, 192.168.x, 100.64-127.x, 127.x and private IPv6), and then takes the last address the proxy added, so a client cannot choose its IP by sending the header itself; on a public connection the header is ignored. If your proxy connects from a public address, give a regex of its addresses in `SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES`. After deploying, check it: fail 5 logins from one network and sign in from another; the second must not get 429.
 
 | Setting | Environment variable | Default |
 |---|---|---|
@@ -142,12 +144,15 @@ HTTP Basic is no longer accepted: only the login takes a password.
 | Failed logins allowed per username and IP | `LOGIN_MAX_ATTEMPTS` | `5` |
 | Failed logins allowed per IP, whatever the usernames | `LOGIN_MAX_ATTEMPTS_PER_IP` | `50` |
 | Window for those failures (ISO-8601 duration) | `LOGIN_WINDOW` | `PT15M` |
+| Failed logins allowed per username, whatever the IPs | `LOGIN_MAX_ATTEMPTS_PER_USER` | `10` |
+| Window for the username's failures (ISO-8601 duration) | `LOGIN_USER_WINDOW` | `PT1H` |
+| Where the client IP comes from (`native` or `none`) | `SERVER_FORWARD_HEADERS_STRATEGY` | `native` |
 
 Generate a secret with `openssl rand -base64 48`. Keep it out of version control. Changing it signs everyone out.
 
 ### First platform admin
 
-Only a platform admin can create users, so the first one is created when the app starts. Set all three of `APP_ADMIN_USERNAME`, `APP_ADMIN_PASSWORD` and `APP_ADMIN_EMAIL`. If no user has that username yet, the app creates a `PLATFORM_ADMIN` with that password. If the user already exists it is left exactly as it is, so the variables can stay set. If any of the three is missing, nothing happens. The password must be at least 8 characters and at most 72 bytes, or the app refuses to start. It is never logged.
+Only a platform admin can create users, so the first one is created when the app starts. Set all three of `APP_ADMIN_USERNAME`, `APP_ADMIN_PASSWORD` and `APP_ADMIN_EMAIL`. If no user has that username yet, the app creates a `PLATFORM_ADMIN` with that password. If the user already exists it is left exactly as it is, so the variables can stay set. If any of the three is missing, nothing happens. The password must be at least 16 characters and at most 72 bytes, or the app refuses to start. It is never logged.
 
 ## Business rules
 
@@ -156,6 +161,7 @@ These rules are enforced in the service layer. Breaking one returns **409 Confli
 **Users**
 - Usernames, emails and phone numbers must be unique.
 - Passwords need at least 8 characters and at most 72 bytes (BCrypt's limit; accented letters and emoji take more than one byte). Longer ones answer **400**.
+- A platform admin's password needs at least 16 characters, when the admin is created and when they change it, because that account reaches every business. A shorter one answers **400** with the error on `password` or `newPassword`.
 - To change a password, the user must send their current password.
 - A platform admin can reset the password of any user except another platform admin, and an owner can reset the password of their own workers, without the current password.
 - A platform admin can't be deleted through the API.
@@ -872,7 +878,7 @@ Every error comes back in the same shape:
 | `ACCOUNT_DISABLED` | 401 | Login with the right password for a disabled account, or any request with a token of a disabled account |
 | `SESSION_EXPIRED` | 401 | The token has expired, was revoked by a password change, belongs to a deleted user or is otherwise invalid |
 | `AUTHENTICATION_REQUIRED` | 401 | An endpoint that needs a token was called without one |
-| `TOO_MANY_ATTEMPTS` | 429 | Too many failed logins for the username and IP, or for the IP; wait the seconds given in `Retry-After` |
+| `TOO_MANY_ATTEMPTS` | 429 | Too many failed logins for the username and IP, for the IP, or for the username from an IP it has not signed in from; wait the seconds given in `Retry-After` |
 | `CASH_CLOSING_EXISTS` | 409 | The establishment already has a cash closing for that business day; `details.date` is the day |
 | `CASH_CLOSING_CLOSED` | 409 | Editing or deleting a closed cash closing, or closing one that is already closed |
 | `CASH_CLOSING_NOT_CLOSED` | 409 | Reopening a cash closing that is not closed |

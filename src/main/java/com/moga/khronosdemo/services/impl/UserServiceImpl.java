@@ -24,6 +24,7 @@ import com.moga.khronosdemo.repositories.StockMovementRepository;
 import com.moga.khronosdemo.repositories.TimeEntryRepository;
 import com.moga.khronosdemo.repositories.UserRepository;
 import com.moga.khronosdemo.repositories.WorkerRepository;
+import com.moga.khronosdemo.security.PasswordConfig;
 import com.moga.khronosdemo.services.UserService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Transactional
@@ -78,6 +80,9 @@ public class UserServiceImpl implements UserService {
     public UserResponseDTO createUser(UserRequestDTO request, Role role, Plan plan, Long creatorId) {
         if (plan != null && role != Role.OWNER) {
             throw new InvalidRequestException("Only owners have a plan");
+        }
+        if (role == Role.PLATFORM_ADMIN) {
+            checkAdminPassword(request.password(), "password");
         }
         return createWithRole(request, role, role == Role.OWNER && plan == null ? Plan.BASIC : plan, creatorId);
     }
@@ -152,6 +157,9 @@ public class UserServiceImpl implements UserService {
 
         if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
             throw new BusinessRuleException("Current password is incorrect");
+        }
+        if (user.getRole() == Role.PLATFORM_ADMIN) {
+            checkAdminPassword(request.newPassword(), "newPassword");
         }
 
         user.setPassword(passwordEncoder.encode(request.newPassword()));
@@ -251,5 +259,13 @@ public class UserServiceImpl implements UserService {
     private User getUser(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
+    }
+
+    // Sent as a failed validation of the field, like the 8-character minimum everyone else gets
+    private static void checkAdminPassword(String password, String field) {
+        if (password.length() < PasswordConfig.MIN_ADMIN_PASSWORD_LENGTH) {
+            throw new InvalidRequestException("Validation failed", Map.of(field,
+                    "a platform admin's password must be at least " + PasswordConfig.MIN_ADMIN_PASSWORD_LENGTH + " characters long"));
+        }
     }
 }

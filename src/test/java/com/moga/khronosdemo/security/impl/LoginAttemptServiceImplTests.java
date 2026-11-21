@@ -16,7 +16,7 @@ class LoginAttemptServiceImplTests {
 
     private final MutableClock clock = new MutableClock();
     private final LoginAttemptServiceImpl service =
-            new LoginAttemptServiceImpl(new LoginAttemptProperties(3, Duration.ofMinutes(15), 10), clock);
+            new LoginAttemptServiceImpl(new LoginAttemptProperties(3, Duration.ofMinutes(15), 10, 5, Duration.ofHours(1)), clock);
 
     @Test
     void blocksThePairAfterTheMaximumFailuresUntilTheWindowEnds() {
@@ -142,7 +142,7 @@ class LoginAttemptServiceImplTests {
     @Test
     void staysBoundedWhenEveryPairIsBlocked() {
         LoginAttemptServiceImpl strict =
-                new LoginAttemptServiceImpl(new LoginAttemptProperties(1, Duration.ofMinutes(15), 1), clock);
+                new LoginAttemptServiceImpl(new LoginAttemptProperties(1, Duration.ofMinutes(15), 1, 1, Duration.ofMinutes(15)), clock);
 
         for (int i = 0; i < LoginAttemptServiceImpl.MAX_TRACKED + 500; i++) {
             strict.recordFailure("user" + i, ip(i));
@@ -151,6 +151,7 @@ class LoginAttemptServiceImplTests {
         // With nothing else to drop, the least recently seen blocked entries give way
         assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, strict.trackedPairs());
         assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, strict.trackedIps());
+        assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, strict.trackedUsers());
         assertEquals(0, strict.secondsUntilAllowed("user0", ip(0)));
         int last = LoginAttemptServiceImpl.MAX_TRACKED + 499;
         assertEquals(15 * 60, strict.secondsUntilAllowed("user" + last, ip(last)));
@@ -159,11 +160,88 @@ class LoginAttemptServiceImplTests {
     @Test
     void rejectsSettingsThatWouldNeverBlockOrNeverUnblock() {
         assertThrows(IllegalStateException.class,
-                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(0, Duration.ofMinutes(15), 50)));
+                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(0, Duration.ofMinutes(15), 50, 10, Duration.ofHours(1))));
         assertThrows(IllegalStateException.class,
-                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(5, Duration.ofMinutes(15), 0)));
+                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(5, Duration.ofMinutes(15), 0, 10, Duration.ofHours(1))));
         assertThrows(IllegalStateException.class,
-                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(5, Duration.ZERO, 50)));
+                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(5, Duration.ZERO, 50, 10, Duration.ofHours(1))));
+        assertThrows(IllegalStateException.class,
+                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(5, Duration.ofMinutes(15), 50, 0, Duration.ofHours(1))));
+        assertThrows(IllegalStateException.class,
+                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(5, Duration.ofMinutes(15), 50, 10, Duration.ZERO)));
+        assertThrows(IllegalStateException.class,
+                () -> new LoginAttemptServiceImpl(new LoginAttemptProperties(5, Duration.ofMinutes(15), 50, 10, null)));
+    }
+
+    @Test
+    void blocksAUsernameAfterTheMaximumFailuresWhateverTheIps() {
+        for (int i = 0; i < 5; i++) {
+            service.recordFailure("ana", ip(i));
+        }
+
+        assertEquals(60 * 60, service.secondsUntilAllowed("ana", "10.0.0.9"));
+        assertEquals(0, service.secondsUntilAllowed("bob", "10.0.0.9"));
+
+        clock.advance(Duration.ofHours(1));
+        assertEquals(0, service.secondsUntilAllowed("ana", "10.0.0.9"));
+    }
+
+    @Test
+    void aUsernamesBlockDoesNotHoldBackAnIpItSignedInFrom() {
+        service.recordSuccess("ana", "10.0.0.1");
+        for (int i = 0; i < 5; i++) {
+            service.recordFailure("ana", ip(i));
+        }
+
+        assertEquals(0, service.secondsUntilAllowed("ana", "10.0.0.1"));
+        assertEquals(60 * 60, service.secondsUntilAllowed("ana", "10.0.0.2"));
+    }
+
+    @Test
+    void aKnownIpStillHasItsOwnPairLimit() {
+        service.recordSuccess("ana", "10.0.0.1");
+        fail(3, "ana", "10.0.0.1");
+
+        assertEquals(15 * 60, service.secondsUntilAllowed("ana", "10.0.0.1"));
+    }
+
+    @Test
+    void anIpIsKnownForThirtyDaysAfterItsLastSuccess() {
+        service.recordSuccess("ana", "10.0.0.1");
+        clock.advance(LoginAttemptServiceImpl.KNOWN_FOR);
+        for (int i = 0; i < 5; i++) {
+            service.recordFailure("ana", ip(i));
+        }
+
+        assertEquals(60 * 60, service.secondsUntilAllowed("ana", "10.0.0.1"));
+    }
+
+    @Test
+    void successDoesNotClearTheUsernamesFailures() {
+        for (int i = 0; i < 4; i++) {
+            service.recordFailure("ana", ip(i));
+        }
+        service.recordSuccess("ana", "10.0.0.1");
+        service.recordFailure("ana", ip(4));
+
+        assertEquals(60 * 60, service.secondsUntilAllowed("ana", "10.0.0.2"));
+    }
+
+    @Test
+    void keepsAtMostTheMaximumNumberOfKnownPairs() {
+        for (int i = 0; i < LoginAttemptServiceImpl.MAX_TRACKED + 500; i++) {
+            service.recordSuccess("user" + i, ip(i));
+        }
+        assertEquals(LoginAttemptServiceImpl.MAX_TRACKED, service.trackedKnownPairs());
+
+        // The least recently seen pairs gave way; the newest are still known
+        int last = LoginAttemptServiceImpl.MAX_TRACKED + 499;
+        for (int i = 0; i < 5; i++) {
+            service.recordFailure("user" + last, "10.0.0." + (i + 1));
+            service.recordFailure("user0", "10.0.0." + (i + 1));
+        }
+        assertEquals(0, service.secondsUntilAllowed("user" + last, ip(last)));
+        assertEquals(60 * 60, service.secondsUntilAllowed("user0", ip(0)));
     }
 
     private void fail(int times, String username, String ip) {
