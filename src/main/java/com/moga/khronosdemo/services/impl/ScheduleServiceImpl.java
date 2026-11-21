@@ -46,7 +46,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 ? List.of()
                 : workerEventService.create(request.assignments(), notifications);
 
-        // One email per worker with their new shifts and events together, sent only after commit
+        // One notification per worker with their new shifts and events together; the push goes only after commit
         notifications.publish(eventPublisher);
         return new ShiftsWithEventsResponseDTO(shifts, assignments);
     }

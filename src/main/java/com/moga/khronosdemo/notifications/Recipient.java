@@ -1,13 +1,11 @@
 package com.moga.khronosdemo.notifications;
 
-import com.moga.khronosdemo.entities.User;
 import com.moga.khronosdemo.entities.Worker;
 
-// userId finds the devices a push goes to; email and firstName make the email
-public record Recipient(Long userId, String email, String firstName) {
+// userId finds the worker's in-app list and the devices a push goes to
+public record Recipient(Long userId) {
 
     public static Recipient of(Worker worker) {
-        User user = worker.getUser();
-        return new Recipient(worker.getUserId(), user.getEmail(), user.getFirstName());
+        return new Recipient(worker.getUserId());
     }
 }

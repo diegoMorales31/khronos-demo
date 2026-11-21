@@ -10,8 +10,8 @@ import java.util.Map;
 
 /**
  * Collects the shifts and events assigned during one request, per worker, and publishes one
- * AssignmentsNotification per worker at the end. Publish it inside the transaction: the email is only
- * sent after commit, so a request that fails anywhere sends nothing.
+ * AssignmentsNotification per worker at the end. Publish it inside the transaction: the notice is saved
+ * with the change and the push only goes after commit, so a request that fails anywhere notifies nobody.
  */
 public class AssignmentBatch {
 

@@ -11,8 +11,8 @@ public interface WorkerShiftService {
 
     List<WorkerShiftResponseDTO> create(List<WorkerShiftRequestDTO> request);
 
-    // Same as create, but adds the shifts to the caller's batch instead of emailing them, so they can go
-    // out in one email with whatever else the caller assigns in the same transaction
+    // Same as create, but adds the shifts to the caller's batch instead of notifying the workers, so they
+    // get one notification with whatever else the caller assigns in the same transaction
     List<WorkerShiftResponseDTO> create(List<WorkerShiftRequestDTO> requests, AssignmentBatch notifications);
 
     WorkerShiftResponseDTO findById(Long id);

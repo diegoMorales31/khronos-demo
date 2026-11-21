@@ -5,6 +5,6 @@ import com.moga.khronosdemo.dtos.response.ShiftsWithEventsResponseDTO;
 
 public interface ScheduleService {
 
-    // Creates the shifts, then the event assignments, all or nothing, and emails each worker once with both
+    // Creates the shifts, then the event assignments, all or nothing, and notifies each worker once of both
     ShiftsWithEventsResponseDTO createShiftsWithEvents(ShiftsWithEventsRequestDTO request);
 }

@@ -11,7 +11,7 @@ public interface WorkerEventService {
 
     List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests);
 
-    // Same as create, but adds the assignments to the caller's batch instead of emailing them
+    // Same as create, but adds the assignments to the caller's batch instead of notifying the workers
     List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests, AssignmentBatch notifications);
 
     WorkerEventResponseDTO findById(Long id);

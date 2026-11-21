@@ -1,8 +1,5 @@
 package com.moga.khronosdemo.notifications;
 
-import com.moga.khronosdemo.dtos.request.EmailRequestDTO;
-import com.moga.khronosdemo.exceptions.EmailDeliveryException;
-import com.moga.khronosdemo.services.EmailService;
 import com.moga.khronosdemo.services.PushService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,10 +12,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
-import java.util.stream.Collectors;
 
-import static org.springframework.web.util.HtmlUtils.htmlEscape;
-
+/**
+ * Pushes each notification to the worker's devices, after commit and on another thread, so a slow push
+ * service never holds up the request. The notice itself is already in the in-app list
+ * (InboxNotificationWriter), which a tap on the push opens.
+ */
 @Component
 public class WorkerNotificationListener {
 
@@ -29,11 +28,9 @@ public class WorkerNotificationListener {
     // A push shows a few lines; the rest are summed up as "and N more"
     private static final int PUSH_LINES = 3;
 
-    private final EmailService emailService;
     private final PushService pushService;
 
-    public WorkerNotificationListener(EmailService emailService, PushService pushService) {
-        this.emailService = emailService;
+    public WorkerNotificationListener(PushService pushService) {
         this.pushService = pushService;
     }
 
@@ -50,61 +47,43 @@ public class WorkerNotificationListener {
             return;
         }
 
-        StringBuilder body = new StringBuilder("<p>You have new work assigned:</p>");
-        if (!shifts.isEmpty()) {
-            body.append("<p><strong>").append(shifts.size() == 1 ? "Shift" : "Shifts").append("</strong></p>")
-                    .append(assignedShiftList(shifts));
-        }
-        if (!events.isEmpty()) {
-            body.append("<p><strong>").append(events.size() == 1 ? "Event" : "Events").append("</strong></p>")
-                    .append(assignedEventList(events));
-        }
         List<String> lines = Stream.concat(shifts.stream().map(this::shiftLine), events.stream().map(this::eventLine)).toList();
-        send(notification.recipient(), assignedSubject(shifts, events), body.toString(), pushLines(lines));
+        push(notification.recipient(), assignedTitle(shifts, events), pushLines(lines));
     }
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onShiftChanged(ShiftChangedNotification notification) {
-        send(notification.recipient(),
+        push(notification.recipient(),
                 "Your shift on " + notification.before().date().format(DATE) + " has changed",
-                "<p>One of your shifts has been changed.</p>"
-                        + "<p><strong>Before:</strong></p>" + shiftList(notification.before())
-                        + "<p><strong>Now:</strong></p>" + shiftList(notification.after()),
                 "Now: " + shiftLine(notification.after()));
     }
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onShiftCancelled(ShiftCancelledNotification notification) {
-        send(notification.recipient(),
+        push(notification.recipient(),
                 "Your shift on " + notification.shift().date().format(DATE) + " has been cancelled",
-                "<p>The following shift has been cancelled:</p>" + shiftList(notification.shift()),
                 shiftLine(notification.shift()));
     }
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onEventChanged(EventChangedNotification notification) {
-        send(notification.recipient(),
+        push(notification.recipient(),
                 "The event " + notification.before().title() + " has changed",
-                "<p>An event you are assigned to has been changed.</p>"
-                        + "<p><strong>Before:</strong></p>" + eventList(notification.before())
-                        + "<p><strong>Now:</strong></p>" + eventList(notification.after()),
                 "Now: " + eventLine(notification.after()));
     }
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onEventUnassigned(EventUnassignedNotification notification) {
-        String reason = notification.reason() != null ? "<p>" + htmlEscape(notification.reason()) + "</p>" : "";
-        send(notification.recipient(),
+        push(notification.recipient(),
                 "You are no longer assigned to " + notification.event().title(),
-                "<p>You are no longer assigned to the following event:</p>" + eventList(notification.event()) + reason,
                 eventLine(notification.event()) + (notification.reason() != null ? "\n" + notification.reason() : ""));
     }
 
-    private static String assignedSubject(List<ShiftDetails> shifts, List<EventDetails> events) {
+    private static String assignedTitle(List<ShiftDetails> shifts, List<EventDetails> events) {
         if (events.isEmpty()) {
             return shifts.size() == 1 ? "New shift on " + shifts.get(0).date().format(DATE) : "You have " + shifts.size() + " new shifts";
         }
@@ -119,64 +98,7 @@ public class WorkerNotificationListener {
         return n + " " + noun + (n == 1 ? "" : "s");
     }
 
-    // One line per shift: "10/05/2030 · 18:00 - 02:00 (+1) · Bar"
-    private String assignedShiftList(List<ShiftDetails> shifts) {
-        return shifts.stream()
-                .map(shift -> "<li><strong>%s</strong> · %s - %s%s · %s</li>".formatted(
-                        shift.date().format(DATE),
-                        shift.startTime().format(TIME),
-                        shift.endTime().format(TIME),
-                        shift.endsNextDay() ? " (+1)" : "",
-                        htmlEscape(shift.zoneName())))
-                .collect(Collectors.joining("", "<ul>", "</ul>"));
-    }
-
-    // One line per event: "10/05/2030 19:00 · Wedding dinner · Hall", and its description below when it has one
-    private String assignedEventList(List<EventDetails> events) {
-        return events.stream()
-                .map(event -> "<li><strong>%s %s</strong> · %s · %s%s</li>".formatted(
-                        event.dateTime().format(DATE),
-                        event.dateTime().format(TIME),
-                        htmlEscape(event.title()),
-                        htmlEscape(event.zoneName()),
-                        event.description() != null ? "<br>" + htmlEscape(event.description()) : ""))
-                .collect(Collectors.joining("", "<ul>", "</ul>"));
-    }
-
-    private String shiftList(ShiftDetails shift) {
-        return """
-                <ul>
-                  <li><strong>Date:</strong> %s</li>
-                  <li><strong>Time:</strong> %s - %s%s</li>
-                  <li><strong>Zone:</strong> %s</li>
-                </ul>
-                """.formatted(
-                shift.date().format(DATE),
-                shift.startTime().format(TIME),
-                shift.endTime().format(TIME),
-                // A shift that ends after midnight shows its end as the next day: 18:00 - 02:00 (+1)
-                shift.endsNextDay() ? " (+1)" : "",
-                htmlEscape(shift.zoneName()));
-    }
-
-    private String eventList(EventDetails event) {
-        return """
-                <ul>
-                  <li><strong>Event:</strong> %s</li>
-                  <li><strong>Date:</strong> %s</li>
-                  <li><strong>Starts at:</strong> %s</li>
-                  <li><strong>Zone:</strong> %s</li>
-                  <li><strong>Description:</strong> %s</li>
-                </ul>
-                """.formatted(
-                htmlEscape(event.title()),
-                event.dateTime().format(DATE),
-                event.dateTime().format(TIME),
-                htmlEscape(event.zoneName()),
-                event.description() != null ? htmlEscape(event.description()) : "-");
-    }
-
-    // Push text is plain, not HTML: "10/05/2030 · 18:00 - 02:00 (+1) · Bar"
+    // "10/05/2030 · 18:00 - 02:00 (+1) · Bar": a shift that ends after midnight shows its end as the next day
     private String shiftLine(ShiftDetails shift) {
         return "%s · %s - %s%s · %s".formatted(
                 shift.date().format(DATE),
@@ -199,16 +121,9 @@ public class WorkerNotificationListener {
         return String.join("\n", lines.subList(0, PUSH_LINES - 1)) + "\nand " + (lines.size() - PUSH_LINES + 1) + " more";
     }
 
-    // The email, then a push to each of the worker's devices: a failed email still sends the push
-    private void send(Recipient recipient, String subject, String body, String pushBody) {
-        String html = "<p>Hi " + htmlEscape(recipient.firstName()) + ",</p>" + body;
+    private void push(Recipient recipient, String title, String body) {
         try {
-            emailService.send(new EmailRequestDTO(recipient.email(), subject, html));
-        } catch (EmailDeliveryException ex) {
-            log.warn("Notification to {} not delivered; recorded in email_logs", recipient.email());
-        }
-        try {
-            pushService.send(recipient.userId(), PushMessage.toNotifications(subject, pushBody));
+            pushService.send(recipient.userId(), PushMessage.toNotifications(title, body));
         } catch (RuntimeException ex) {
             log.warn("Push notification to user {} not sent: {}", recipient.userId(), ex.getMessage());
         }

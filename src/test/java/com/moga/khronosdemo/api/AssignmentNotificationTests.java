@@ -1,40 +1,40 @@
 package com.moga.khronosdemo.api;
 
-import com.moga.khronosdemo.dtos.request.EmailRequestDTO;
+import com.jayway.jsonpath.JsonPath;
 import com.moga.khronosdemo.entities.Establishment;
 import com.moga.khronosdemo.entities.Event;
 import com.moga.khronosdemo.entities.User;
 import com.moga.khronosdemo.entities.Worker;
+import com.moga.khronosdemo.entities.InboxNotification;
 import com.moga.khronosdemo.entities.Zone;
+import com.moga.khronosdemo.entities.enums.NotificationType;
+import com.moga.khronosdemo.repositories.InboxNotificationRepository;
 import com.moga.khronosdemo.support.IntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Limit;
 
 import java.time.LocalDate;
-import java.util.Comparator;
 import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.after;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Shifts and events assigned to a worker in one request reach them as a single email. Emails are sent
- * after commit on another thread, hence the timeouts.
+ * Shifts and events assigned to a worker in one request reach them as a single notification in their
+ * in-app list (the push carries the same). The notice is saved in the request's transaction, so a request
+ * that fails notifies nobody.
  */
-class AssignmentEmailTests extends IntegrationTest {
+class AssignmentNotificationTests extends IntegrationTest {
 
     private static final LocalDate DAY = LocalDate.of(2030, 5, 10);
-    private static final long WAIT_MS = 5000;
-    // How long to watch for an email that must never be sent
-    private static final long QUIET_MS = 1000;
+
+    @Autowired
+    private InboxNotificationRepository inboxNotificationRepository;
 
     private User owner;
     private Zone hall;
@@ -51,7 +51,7 @@ class AssignmentEmailTests extends IntegrationTest {
     }
 
     @Test
-    void severalShiftsForOneWorkerSendOneEmail() throws Exception {
+    void severalShiftsForOneWorkerMakeOneNotification() throws Exception {
         mockMvc.perform(postJson("/api/worker-shifts", """
                         [
                           { "workerId": %1$d, "zoneId": %2$d, "date": "2030-05-11", "startTime": "09:00", "endTime": "13:00" },
@@ -61,13 +61,12 @@ class AssignmentEmailTests extends IntegrationTest {
                         """.formatted(worker.getUserId(), hall.getId())).with(as(owner)))
                 .andExpect(status().isCreated());
 
-        List<EmailRequestDTO> emails = emailsSent(1);
-        assertEquals("worker@example.test", emails.get(0).to());
-        assertEquals("You have 3 new shifts", emails.get(0).subject());
+        assertAssigned(worker, 3, 0);
+        assertEquals(1, inboxNotificationRepository.count());
     }
 
     @Test
-    void shiftsForTwoWorkersSendOneEmailEach() throws Exception {
+    void shiftsForTwoWorkersMakeOneNotificationEach() throws Exception {
         mockMvc.perform(postJson("/api/worker-shifts", """
                         [
                           { "workerId": %1$d, "zoneId": %3$d, "date": "2030-05-10", "startTime": "09:00", "endTime": "13:00" },
@@ -77,15 +76,12 @@ class AssignmentEmailTests extends IntegrationTest {
                         """.formatted(worker.getUserId(), colleague.getUserId(), hall.getId())).with(as(owner)))
                 .andExpect(status().isCreated());
 
-        List<EmailRequestDTO> emails = emailsSent(2);
-        assertEquals("colleague@example.test", emails.get(0).to());
-        assertEquals("New shift on 10/05/2030", emails.get(0).subject());
-        assertEquals("worker@example.test", emails.get(1).to());
-        assertEquals("You have 2 new shifts", emails.get(1).subject());
+        assertAssigned(colleague, 1, 0);
+        assertAssigned(worker, 2, 0);
     }
 
     @Test
-    void aShiftBatchThatFailsHalfwaySendsNoEmail() throws Exception {
+    void aShiftBatchThatFailsHalfwayNotifiesNobody() throws Exception {
         createShift(worker, hall, DAY, "18:00", "23:00");
 
         mockMvc.perform(postJson("/api/worker-shifts", """
@@ -97,11 +93,11 @@ class AssignmentEmailTests extends IntegrationTest {
                         """.formatted(worker.getUserId(), colleague.getUserId(), hall.getId())).with(as(owner)))
                 .andExpect(status().isConflict());
 
-        verify(emailService, after(QUIET_MS).never()).send(any());
+        assertEquals(0, inboxNotificationRepository.count());
     }
 
     @Test
-    void severalEventsForOneWorkerSendOneEmail() throws Exception {
+    void severalEventsForOneWorkerMakeOneNotification() throws Exception {
         createShift(worker, hall, DAY, "18:00", "23:00");
         Event dinner = createEvent(hall, DAY.atTime(19, 0));
         Event cocktails = createEvent(hall, DAY.atTime(22, 30));
@@ -111,13 +107,12 @@ class AssignmentEmailTests extends IntegrationTest {
                         """.formatted(worker.getUserId(), dinner.getId(), cocktails.getId())).with(as(owner)))
                 .andExpect(status().isCreated());
 
-        List<EmailRequestDTO> emails = emailsSent(1);
-        assertEquals("worker@example.test", emails.get(0).to());
-        assertEquals("You have been assigned to 2 events", emails.get(0).subject());
+        assertAssigned(worker, 0, 2);
+        assertEquals(1, inboxNotificationRepository.count());
     }
 
     @Test
-    void eventsForTwoWorkersSendOneEmailEach() throws Exception {
+    void eventsForTwoWorkersMakeOneNotificationEach() throws Exception {
         createShift(worker, hall, DAY, "18:00", "23:00");
         createShift(colleague, hall, DAY, "18:00", "23:00");
         Event dinner = createEvent(hall, DAY.atTime(19, 0));
@@ -133,14 +128,12 @@ class AssignmentEmailTests extends IntegrationTest {
                         .with(as(owner)))
                 .andExpect(status().isCreated());
 
-        List<EmailRequestDTO> emails = emailsSent(2);
-        assertEquals("colleague@example.test", emails.get(0).to());
-        assertEquals("worker@example.test", emails.get(1).to());
-        assertEquals("You have been assigned to 2 events", emails.get(1).subject());
+        assertAssigned(colleague, 0, 1);
+        assertAssigned(worker, 0, 2);
     }
 
     @Test
-    void anEventBatchThatFailsHalfwaySendsNoEmail() throws Exception {
+    void anEventBatchThatFailsHalfwayNotifiesNobody() throws Exception {
         createShift(worker, hall, DAY, "18:00", "23:00");
         Event dinner = createEvent(hall, DAY.atTime(19, 0));
 
@@ -149,11 +142,11 @@ class AssignmentEmailTests extends IntegrationTest {
                         """.formatted(worker.getUserId(), dinner.getId())).with(as(owner)))
                 .andExpect(status().isConflict());
 
-        verify(emailService, after(QUIET_MS).never()).send(any());
+        assertEquals(0, inboxNotificationRepository.count());
     }
 
     @Test
-    void aShiftAndTheEventsItCoversGoInOneEmail() throws Exception {
+    void aShiftAndTheEventsItCoversGoInOneNotification() throws Exception {
         Event dinner = createEvent(hall, DAY.atTime(19, 0));
         Event cocktails = createEvent(hall, DAY.atTime(22, 30));
 
@@ -170,13 +163,12 @@ class AssignmentEmailTests extends IntegrationTest {
 
         assertEquals(1, workerShiftRepository.count());
         assertEquals(2, workerEventRepository.count());
-        List<EmailRequestDTO> emails = emailsSent(1);
-        assertEquals("worker@example.test", emails.get(0).to());
-        assertEquals("You have 1 new shift and 2 events", emails.get(0).subject());
+        assertAssigned(worker, 1, 2);
+        assertEquals(1, inboxNotificationRepository.count());
     }
 
     @Test
-    void shiftsWithEventsForTwoWorkersSendOneEmailEach() throws Exception {
+    void shiftsWithEventsForTwoWorkersMakeOneNotificationEach() throws Exception {
         Event dinner = createEvent(hall, DAY.atTime(19, 0));
 
         mockMvc.perform(postJson("/api/worker-shifts/with-events", """
@@ -190,13 +182,12 @@ class AssignmentEmailTests extends IntegrationTest {
                         """.formatted(worker.getUserId(), colleague.getUserId(), hall.getId(), dinner.getId())).with(as(owner)))
                 .andExpect(status().isCreated());
 
-        List<EmailRequestDTO> emails = emailsSent(2);
-        assertEquals("You have 1 new shift and 1 event", emails.get(0).subject());
-        assertEquals("You have 1 new shift and 1 event", emails.get(1).subject());
+        assertAssigned(worker, 1, 1);
+        assertAssigned(colleague, 1, 1);
     }
 
     @Test
-    void anEventTheNewShiftDoesNotCoverSavesNothingAndSendsNoEmail() throws Exception {
+    void anEventTheNewShiftDoesNotCoverSavesNothingAndNotifiesNobody() throws Exception {
         Event late = createEvent(hall, DAY.atTime(23, 30));
 
         mockMvc.perform(postJson("/api/worker-shifts/with-events", """
@@ -210,7 +201,7 @@ class AssignmentEmailTests extends IntegrationTest {
 
         assertEquals(0, workerShiftRepository.count());
         assertEquals(0, workerEventRepository.count());
-        verify(emailService, after(QUIET_MS).never()).send(any());
+        assertEquals(0, inboxNotificationRepository.count());
     }
 
     @Test
@@ -221,7 +212,7 @@ class AssignmentEmailTests extends IntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.assignments", hasSize(0)));
 
-        assertEquals("New shift on 10/05/2030", emailsSent(1).get(0).subject());
+        assertAssigned(worker, 1, 0);
     }
 
     @Test
@@ -240,11 +231,12 @@ class AssignmentEmailTests extends IntegrationTest {
         assertEquals(0, workerShiftRepository.count());
     }
 
-    // Waits for exactly this many emails and returns them sorted by recipient, since they arrive from other threads
-    private List<EmailRequestDTO> emailsSent(int count) {
-        ArgumentCaptor<EmailRequestDTO> email = ArgumentCaptor.forClass(EmailRequestDTO.class);
-        verify(emailService, timeout(WAIT_MS).times(count)).send(email.capture());
-        verify(emailService, after(QUIET_MS).times(count)).send(any());
-        return email.getAllValues().stream().sorted(Comparator.comparing(EmailRequestDTO::to)).toList();
+    // The worker has exactly one notice, an assignment with this many shifts and events
+    private void assertAssigned(Worker recipient, int shifts, int events) {
+        List<InboxNotification> notices = inboxNotificationRepository.findLatest(recipient.getUserId(), Limit.of(10));
+        assertEquals(1, notices.size());
+        assertEquals(NotificationType.ASSIGNED, notices.get(0).getType());
+        assertEquals(shifts, JsonPath.<List<?>>read(notices.get(0).getData(), "$.shifts").size());
+        assertEquals(events, JsonPath.<List<?>>read(notices.get(0).getData(), "$.events").size());
     }
 }

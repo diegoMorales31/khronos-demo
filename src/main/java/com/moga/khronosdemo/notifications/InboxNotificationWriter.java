@@ -13,8 +13,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Puts each notification in the worker's in-app list. Unlike the email and the push, which go after
- * commit, the notice is written just before the commit, in the same transaction: it is saved with the
+ * Puts each notification in the worker's in-app list. Unlike the push, which goes after commit,
+ * the notice is written just before the commit, in the same transaction: it is saved with the
  * change, or not at all. Only the facts are stored (NotificationType says the shape); the app words them
  * in the reader's language.
  */

@@ -53,11 +53,6 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request, ex.getFieldErrors());
     }
 
-    @ExceptionHandler(EmailDeliveryException.class)
-    public ResponseEntity<ErrorResponseDTO> handleEmailDelivery(EmailDeliveryException ex, HttpServletRequest request) {
-        return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), request, null);
-    }
-
     @ExceptionHandler(TooManyLoginAttemptsException.class)
     public ResponseEntity<ErrorResponseDTO> handleTooManyLoginAttempts(TooManyLoginAttemptsException ex,
                                                                        HttpServletRequest request) {

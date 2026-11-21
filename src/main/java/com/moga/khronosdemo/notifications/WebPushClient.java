@@ -26,7 +26,7 @@ public class WebPushClient {
     public WebPushClient(PushProperties properties, Clock clock) {
         this.properties = properties;
         this.clock = clock;
-        // As with email, without timeouts a slow push service would hold a notification thread indefinitely
+        // Without timeouts a slow push service would hold a notification thread indefinitely
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
                 HttpClient.newBuilder().connectTimeout(properties.connectTimeout()).build());
         requestFactory.setReadTimeout(properties.readTimeout());

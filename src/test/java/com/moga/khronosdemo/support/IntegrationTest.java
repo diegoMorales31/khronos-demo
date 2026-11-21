@@ -31,7 +31,6 @@ import com.moga.khronosdemo.repositories.WorkerShiftRepository;
 import com.moga.khronosdemo.repositories.ZoneRepository;
 import com.moga.khronosdemo.security.DatabaseUserDetailsService;
 import com.moga.khronosdemo.security.TokenService;
-import com.moga.khronosdemo.services.EmailService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -140,11 +139,6 @@ public abstract class IntegrationTest {
 
     @Autowired
     private DatabaseUserDetailsService userDetailsService;
-
-    // Notifications are emailed after commit on another thread. The mock keeps the tests offline
-    // and stops those threads from writing to email_logs while the next test cleans the database.
-    @MockitoBean
-    protected EmailService emailService;
 
     // No test talks to a real push service
     @MockitoBean

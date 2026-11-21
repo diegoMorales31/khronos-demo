@@ -52,8 +52,8 @@ public class WorkerEventServiceImpl implements WorkerEventService {
     public List<WorkerEventResponseDTO> create(List<WorkerEventRequestDTO> requests) {
         AssignmentBatch notifications = new AssignmentBatch();
         List<WorkerEventResponseDTO> created = create(requests, notifications);
-        // One email per worker listing all the events they were assigned to. Published inside the transaction,
-        // so if any assignment of the batch is rejected nothing is committed and no email is sent
+        // One notification per worker listing all the events they were assigned to. Published inside the
+        // transaction, so if any assignment of the batch is rejected nothing is committed and nobody is notified
         notifications.publish(eventPublisher);
         return created;
     }

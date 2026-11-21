@@ -30,8 +30,6 @@ jobs:
       DB_PASSWORD: khronos
       # Throwaway values for the test run only; real deployments set their own
       JWT_SECRET: ci-only-signing-secret-0123456789-abcdefghij
-      RESEND_API_KEY: ci-dummy-key
-      RESEND_BASE_URL: http://127.0.0.1:9
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5

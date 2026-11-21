@@ -57,8 +57,8 @@ public class WorkerShiftServiceImpl implements WorkerShiftService {
     public List<WorkerShiftResponseDTO> create(List<WorkerShiftRequestDTO> requests) {
         AssignmentBatch notifications = new AssignmentBatch();
         List<WorkerShiftResponseDTO> created = create(requests, notifications);
-        // One email per worker listing all their new shifts. Published inside the transaction, so if any
-        // shift of the batch is rejected nothing is committed and no email is sent
+        // One notification per worker listing all their new shifts. Published inside the transaction, so if any
+        // shift of the batch is rejected nothing is committed and nobody is notified
         notifications.publish(eventPublisher);
         return created;
     }

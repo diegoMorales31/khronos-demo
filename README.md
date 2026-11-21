@@ -19,7 +19,6 @@ And it keeps the inventory of drinks and supplies: suppliers, products, a stock 
 | Database | PostgreSQL (Supabase in production) |
 | Migrations | Flyway |
 | Auth | JWT bearer tokens (HS256), valid for 1 hour, stateless |
-| Email | Resend |
 | Docs | springdoc OpenAPI / Swagger UI |
 | Build | Maven (wrapper included), Docker |
 | CI | GitHub Actions: the tests run against PostgreSQL on every push and pull request |
@@ -655,27 +654,27 @@ A movement and an order look like this:
 }
 ```
 
-## Email notifications
+## Notifications
 
-Workers get an email through [Resend](https://resend.com) whenever their schedule changes:
+Workers are notified whenever their schedule changes, in the app's list of notifications (see [In-app notifications](#in-app-notifications)) and, on the devices where they turned it on, by push (see [Push notifications](#push-notifications)). Nothing is emailed.
 
-| Trigger | Email |
+| Trigger | Notification |
 |---|---|
-| Shifts are created for them | **One email per worker per request**, listing all their new shifts by start time, one line each with date, hours and zone: "New shift on dd/MM/yyyy" for one, "You have N new shifts" for several. A night shift shows its end as `02:00 (+1)` |
-| One of their shifts is edited | Shift changed, showing before and after |
-| One of their shifts is deleted, or moved to another worker | Shift cancelled (the new worker gets a new-shift email) |
-| They are assigned to events | **One email per worker per request**, listing all their events by date: "You have been assigned to <title>" for one, "You have been assigned to N events" for several |
-| Shifts and events are given to them together (`POST /api/worker-shifts/with-events`) | **One email per worker** with two lists, their new shifts and their events: "You have 1 new shift and 2 events" |
-| An event they are assigned to is edited | Event changed, showing before and after |
+| Shifts are created for them | **One notification per worker per request**, with all their new shifts by start time, one line each with date, hours and zone: "New shift on dd/MM/yyyy" for one, "You have N new shifts" for several. A night shift shows its end as `02:00 (+1)` |
+| One of their shifts is edited | Shift changed, with before and after |
+| One of their shifts is deleted, or moved to another worker | Shift cancelled (the new worker gets a new-shift notification) |
+| They are assigned to events | **One notification per worker per request**, with all their events by date: "You have been assigned to <title>" for one, "You have been assigned to N events" for several |
+| Shifts and events are given to them together (`POST /api/worker-shifts/with-events`) | **One notification per worker** with both, their new shifts and their events: "You have 1 new shift and 2 events" |
+| An event they are assigned to is edited | Event changed, with before and after |
 | They are unassigned, the event or its zone is deleted, or their shift no longer covers the event | No longer assigned, with the reason |
 
-Emails are sent asynchronously and only after the transaction commits, so a rejected request (for example, a batch of shifts where one fails) sends nothing. Grouping only covers what is created in the same request: shifts created in separate requests, and every change, cancellation or unassignment, still send one email each. A failed delivery never fails the API request: it is logged as a warning (recipient only, never the body). Every attempt, successful or not, is recorded in the `email_logs` table.
+A rejected request (for example, a batch of shifts where one fails) notifies nobody. Grouping only covers what is created in the same request: shifts created in separate requests, and every change, cancellation or unassignment, still make one notification each.
 
-Resend is configured with `RESEND_API_KEY` (required) and `RESEND_FROM` (optional, defaults to `Khronos <onboarding@resend.dev>`). Calls to Resend give up after `RESEND_CONNECT_TIMEOUT` (default `PT5S`) to connect and `RESEND_READ_TIMEOUT` (default `PT10S`) to answer.
+The `email_logs` table, from when notifications were emailed through Resend, is no longer written or read. It is left in the database so that a build from before this change still starts against it.
 
 ## In-app notifications
 
-Every notification above is also kept in the worker's list in the app (the **Avisos** page), with an unread count on the menu. Unlike the email and the push, the notice is written **in the same transaction** as the change, just before it commits (`InboxNotificationWriter`): a saved change always has its notice, and a rejected request has none.
+Every notification above is kept in the worker's list in the app (the **Avisos** page), with an unread count on the menu. Unlike the push, the notice is written **in the same transaction** as the change, just before it commits (`InboxNotificationWriter`): a saved change always has its notice, and a rejected request has none.
 
 The API keeps only the facts, so the app words them in the reader's language: `type` says what happened and `data` holds the details, in the venue's local time.
 
@@ -700,7 +699,7 @@ Each user only sees and marks their own: someone else's id answers **404**, as i
 
 ## Push notifications
 
-Every email above also goes as a push notification to each device where the worker turned them on (the app's Account page, see the frontend README). Same title as the email, a few plain lines of text (a long list ends in "and N more"), and a tap opens the app on the worker's list of notifications. Push is sent right after the email, on the same notification thread, so it has the same guarantees: only after commit, nothing for a rejected request, and a failure never fails the request. A failed email still sends the push.
+Every notification above also goes as a push notification to each device where the worker turned them on (the app's Account page, see the frontend README): a title such as "You have 2 new shifts", a few plain lines of text (a long list ends in "and N more"), and a tap opens the app on the worker's list of notifications. Pushes are sent on another thread, only after the transaction commits, so a rejected request pushes nothing and a slow or failing push service never holds up or fails the request: a failure is logged as a warning.
 
 It is standard [Web Push](https://web.dev/articles/push-notifications-overview): the browser gives the app an endpoint on its push service (Google's for Chrome and Android, Apple's for Safari, Mozilla's, Microsoft's) and two keys; the API encrypts each message for that device (RFC 8291) and signs the request with its VAPID key (RFC 8292). Both are done with the JDK alone, in `notifications/WebPushCrypto` (checked against the RFC's own example), and `notifications/WebPushClient` posts the message.
 
@@ -717,7 +716,7 @@ Rules:
 - At most 10 devices per user; registering one more drops the oldest.
 - Messages are kept by the push service for a phone that is off for `PUSH_TTL` (default one day). Calls to a push service give up after `PUSH_CONNECT_TIMEOUT` and `PUSH_READ_TIMEOUT` (`PT5S`, `PT10S`).
 
-**Setting it up.** Push is off until both VAPID keys are set; without them only emails go out and the app says notifications aren't available. Generate the pair once:
+**Setting it up.** Push is off until both VAPID keys are set; without them workers only see the in-app list, and the app says push notifications aren't available. Generate the pair once:
 
 ```bash
 npx web-push generate-vapid-keys
@@ -725,7 +724,7 @@ npx web-push generate-vapid-keys
 
 and set `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY` and `PUSH_VAPID_SUBJECT` (a `mailto:` or `https:` contact the push services can reach). Keep the pair: changing it stops every device's notifications until each worker turns them on again. Keys that are set but invalid, or that don't belong together, stop the application at startup. Browsers only allow push on HTTPS, so it needs the app and the API deployed (or `localhost` in development).
 
-Workers' text is in English, as the emails are.
+The push text is in English; the in-app list is worded by the app in the reader's language.
 
 ## API overview
 
@@ -762,7 +761,7 @@ All endpoints are under `/api` and need a bearer token, except `POST /api/auth/l
 | Method and path | Body | Answer | Who |
 |---|---|---|---|
 | `POST /api/workers/with-user` | `{ "establishmentId": 1, "user": { same fields as POST /api/users/create/worker } }` | **201** `{ "user": {...}, "worker": {...} }`. The account and the link are saved together or not at all. | The establishment's owner or an admin |
-| `POST /api/worker-shifts/with-events` | `{ "shifts": [ same items as POST /api/worker-shifts ], "assignments": [ { "workerId": 4, "eventId": 9 } ] }`. `assignments` may be empty. | **201** `{ "shifts": [...], "assignments": [...] }`. The shifts are saved first and the assignments are checked against them, so a new shift can cover its events. All or nothing: the error names the item, `Shift [1]: ...` or `Assignment [0]: ...`. Each worker gets one email with both lists. | The owner of every worker and event, or an admin |
+| `POST /api/worker-shifts/with-events` | `{ "shifts": [ same items as POST /api/worker-shifts ], "assignments": [ { "workerId": 4, "eventId": 9 } ] }`. `assignments` may be empty. | **201** `{ "shifts": [...], "assignments": [...] }`. The shifts are saved first and the assignments are checked against them, so a new shift can cover its events. All or nothing: the error names the item, `Shift [1]: ...` or `Assignment [0]: ...`. Each worker gets one notification with both lists. | The owner of every worker and event, or an admin |
 | `PUT /api/workers/{id}/active` | `{ "active": false }` | **200** the worker. Repeating it changes nothing. | The worker's owner or an admin |
 | `PUT /api/users/{id}/password/reset` | `{ "newPassword": "..." }` | **204**. The user's older tokens stop working. | An admin (not on another admin) or the worker's owner |
 | `GET /api/worker-events/establishment/{id}?from&to` | | **200** list of assignments. A worker gets only their own. | The owner, its workers or an admin |
@@ -926,7 +925,7 @@ Every error comes back in the same shape:
 
 ## Running locally
 
-Copy `.env.example` to `.env` and fill it in. It lists every variable the app reads, with its default. At least set `JWT_SECRET` (`openssl rand -base64 48`), `RESEND_API_KEY` and, on a new database, `APP_ADMIN_USERNAME`, `APP_ADMIN_PASSWORD` and `APP_ADMIN_EMAIL` so you can sign in.
+Copy `.env.example` to `.env` and fill it in. It lists every variable the app reads, with its default. At least set `JWT_SECRET` (`openssl rand -base64 48`) and, on a new database, `APP_ADMIN_USERNAME`, `APP_ADMIN_PASSWORD` and `APP_ADMIN_EMAIL` so you can sign in.
 
 **With Docker** (no Java or PostgreSQL needed):
 
@@ -966,12 +965,12 @@ Flyway owns the schema. The scripts are in `src/main/resources/db/migration` and
 
 ### Tests
 
-The integration tests start the whole app against a real, **empty** PostgreSQL database given by `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, and empty every table before and after each test. Never point them at a database whose data you need: the app also reads `DB_URL` from `.env`, so override it as below. As a safety net the tests refuse to start, before migrating anything, unless the database name contains `test`. `JWT_SECRET` and `RESEND_API_KEY` must also be set (any values; no email is sent). Push is on in the tests, with a VAPID pair made for them in `application-test.properties`, and nothing is pushed: `WebPushClient` is mocked.
+The integration tests start the whole app against a real, **empty** PostgreSQL database given by `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, and empty every table before and after each test. Never point them at a database whose data you need: the app also reads `DB_URL` from `.env`, so override it as below. As a safety net the tests refuse to start, before migrating anything, unless the database name contains `test`. `JWT_SECRET` must also be set (any value). Push is on in the tests, with a VAPID pair made for them in `application-test.properties`, and nothing is pushed: `WebPushClient` is mocked.
 
 ```bash
 docker run -d --name khronos-test-db -p 5433:5432 -e POSTGRES_USER=khronos -e POSTGRES_PASSWORD=khronos -e POSTGRES_DB=khronos_test postgres:16-alpine
 DB_URL=jdbc:postgresql://localhost:5433/khronos_test DB_USERNAME=khronos DB_PASSWORD=khronos \
-JWT_SECRET=test-only-secret-0123456789-abcdefghijkl RESEND_API_KEY=test ./mvnw test
+JWT_SECRET=test-only-secret-0123456789-abcdefghijkl ./mvnw test
 ```
 
 `./mvnw test -Dtest=TokenFlowTests` checks the token rules without a database. CI runs the same suite on every push and pull request (`.github/workflows/ci.yml`).
@@ -985,7 +984,7 @@ src/main/java/com/moga/khronosdemo
 ├── dtos/          request/*RequestDTO (with validation) and response/*ResponseDTO, including CSV downloads
 ├── entities/      JPA entities and the Role enum
 ├── exceptions/    Domain exceptions and GlobalExceptionHandler
-├── notifications/ Notification events, the listener that emails workers and pushes to their devices, the one that keeps them in the in-app list, and Web Push (encryption, VAPID, sending)
+├── notifications/ Notification events, the listener that pushes to workers' devices, the one that keeps them in the in-app list, and Web Push (encryption, VAPID, sending)
 ├── mappers/       Conversions between entities and DTOs
 ├── repositories/  Spring Data JPA repositories, including the overlap and coverage queries
 ├── security/      SecurityConfig, JwtConfig, PasswordConfig, AccessGuard, the user-details service, plan checks,
