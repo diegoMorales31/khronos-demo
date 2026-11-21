@@ -9,6 +9,7 @@ import com.moga.khronosdemo.entities.Worker;
 import com.moga.khronosdemo.entities.WorkerEvent;
 import com.moga.khronosdemo.entities.WorkerShift;
 import com.moga.khronosdemo.entities.Zone;
+import com.moga.khronosdemo.notifications.WebPushClient;
 import com.moga.khronosdemo.entities.enums.Plan;
 import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.entities.enums.TimeEntrySource;
@@ -144,6 +145,10 @@ public abstract class IntegrationTest {
     // and stops those threads from writing to email_logs while the next test cleans the database.
     @MockitoBean
     protected EmailService emailService;
+
+    // No test talks to a real push service
+    @MockitoBean
+    protected WebPushClient webPushClient;
 
     @BeforeEach
     @AfterEach

@@ -22,7 +22,7 @@ public @interface MaxBytes {
 
     int value();
 
-    String message() default "must be at most {value} bytes long";
+    String message() default "{khronos.validation.MaxBytes.message}";
 
     Class<?>[] groups() default {};
 

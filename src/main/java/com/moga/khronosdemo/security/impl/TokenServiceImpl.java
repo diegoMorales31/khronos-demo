@@ -38,6 +38,6 @@ public class TokenServiceImpl implements TokenService {
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         String token = jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
-        return new TokenResponseDTO(token, "Bearer", expiresAt, properties.ttl().toSeconds());
+        return new TokenResponseDTO(token, "Bearer", expiresAt, properties.ttl().toSeconds(), null);
     }
 }

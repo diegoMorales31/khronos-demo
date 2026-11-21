@@ -18,6 +18,8 @@ import com.moga.khronosdemo.repositories.CashClosingRepository;
 import com.moga.khronosdemo.repositories.EstablishmentRepository;
 import com.moga.khronosdemo.repositories.ExpenseRepository;
 import com.moga.khronosdemo.repositories.PurchaseOrderRepository;
+import com.moga.khronosdemo.repositories.PushSubscriptionRepository;
+import com.moga.khronosdemo.repositories.RefreshSessionRepository;
 import com.moga.khronosdemo.repositories.StockMovementRepository;
 import com.moga.khronosdemo.repositories.TimeEntryRepository;
 import com.moga.khronosdemo.repositories.UserRepository;
@@ -43,6 +45,8 @@ public class UserServiceImpl implements UserService {
     private final ExpenseRepository expenseRepository;
     private final StockMovementRepository stockMovementRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
+    private final PushSubscriptionRepository pushSubscriptionRepository;
+    private final RefreshSessionRepository refreshSessionRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final PlanLimits planLimits;
@@ -51,7 +55,9 @@ public class UserServiceImpl implements UserService {
                            EstablishmentRepository establishmentRepository, TimeEntryRepository timeEntryRepository,
                            CashClosingRepository cashClosingRepository, ExpenseRepository expenseRepository,
                            StockMovementRepository stockMovementRepository,
-                           PurchaseOrderRepository purchaseOrderRepository, UserMapper userMapper,
+                           PurchaseOrderRepository purchaseOrderRepository,
+                           PushSubscriptionRepository pushSubscriptionRepository,
+                           RefreshSessionRepository refreshSessionRepository, UserMapper userMapper,
                            PasswordEncoder passwordEncoder, PlanLimits planLimits) {
         this.userRepository = userRepository;
         this.workerRepository = workerRepository;
@@ -61,6 +67,8 @@ public class UserServiceImpl implements UserService {
         this.expenseRepository = expenseRepository;
         this.stockMovementRepository = stockMovementRepository;
         this.purchaseOrderRepository = purchaseOrderRepository;
+        this.pushSubscriptionRepository = pushSubscriptionRepository;
+        this.refreshSessionRepository = refreshSessionRepository;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.planLimits = planLimits;
@@ -148,16 +156,22 @@ public class UserServiceImpl implements UserService {
 
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         user.setCredentialsChangedAt(Instant.now());
+        // Signed out everywhere: every session ends, and notifications stop until the user signs in on each device again
+        refreshSessionRepository.deleteByUserId(id);
+        pushSubscriptionRepository.deleteByUserId(id);
 
     }
 
     // Set by an admin or the worker's owner, so there is no current password to check. As with
-    // changePassword, every token issued before the reset stops working.
+    // changePassword, every token issued before the reset stops working, every session ends and every device
+    // stops getting pushes.
     @Override
     public void resetPassword(Long id, PasswordResetRequestDTO request) {
         User user = getUser(id);
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         user.setCredentialsChangedAt(Instant.now());
+        refreshSessionRepository.deleteByUserId(id);
+        pushSubscriptionRepository.deleteByUserId(id);
     }
 
     // Deleting an owner deletes their establishments, and deleting a worker's account deletes the worker,

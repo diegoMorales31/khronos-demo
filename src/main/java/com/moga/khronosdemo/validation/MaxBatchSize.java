@@ -19,7 +19,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface MaxBatchSize {
 
-    String message() default "contains too many items";
+    String message() default "{khronos.validation.MaxBatchSize.message}";
 
     Class<?>[] groups() default {};
 

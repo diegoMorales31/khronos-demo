@@ -94,36 +94,51 @@ Every owner has a plan, and nobody else does (the database checks both). It deci
 
 ## Authentication
 
-Clients sign in once and then send a short-lived token with every request.
+Clients sign in once and stay signed in: they send a short-lived access token with every request, and swap a long-lived refresh token for a new pair whenever the access token runs out.
 
 1. `POST /api/auth/login` with `{ "username": "...", "password": "..." }`. This is the only endpoint that accepts a password.
-2. The response holds the token and when it expires:
+2. The response holds the access token, when it expires, and the refresh token:
    ```json
-   { "accessToken": "eyJ...", "tokenType": "Bearer", "expiresAt": "2026-11-17T15:42:00Z", "expiresIn": 3600 }
+   { "accessToken": "eyJ...", "tokenType": "Bearer", "expiresAt": "2026-11-17T15:42:00Z", "expiresIn": 3600, "refreshToken": "q3Z..." }
    ```
 3. Every other request sends `Authorization: Bearer <accessToken>`.
+4. Before the access token expires, or on its first **401**, `POST /api/auth/refresh` with `{ "refreshToken": "..." }` answers with a new response of the same shape. The refresh token in it replaces the one sent, which no longer works.
+5. `POST /api/auth/logout` with `{ "refreshToken": "..." }` ends that device's session (**204**, also when it had already ended).
+
+Refresh and logout need no access token: the refresh token is the credential.
 
 A wrong password answers **401** "Invalid username or password", whether the account exists, is active or is disabled. Only the right password for a disabled account answers **401** "This account is disabled", so the login reveals nothing about an account to someone who doesn't know its password.
 
-The token is a JWT signed with HS256. It holds only the user id (`sub`), the role, and the `iat` and `exp` times. **It expires one hour after login.** After that the API answers **401** and the client has to sign in again. There is no refresh token in this beta, so sessions stop at the one-hour mark.
+The access token is a JWT signed with HS256. It holds only the user id (`sub`), the role, and the `iat` and `exp` times. **It expires one hour after it is issued**, and a client gets a new one with the refresh token.
+
+**Sessions.** Each sign-in starts a session for that device (`refresh_sessions`, V19), and it lasts as long as the device keeps using it:
+
+- The refresh token is 32 random bytes. Only its SHA-256 is stored, so a copy of the table can't be used to sign in.
+- Every refresh replaces the token (rotation) and moves the session's end `SESSION_IDLE_TTL` (default 90 days) further away. A device used at least that often never has to sign in again; one left unused that long does.
+- **A replaced token used again** means two holders of the same token, one of them a copy, so the session ends for both and the owner signs in again. Within `SESSION_REUSE_GRACE` (default one minute) of the swap it is taken instead as a retry after a lost answer, or two tabs refreshing at once, and only refused: the session goes on with the newer token.
+- A user can have `SESSION_MAX_PER_USER` sessions (default 20); signing in on one more ends the one that would end soonest.
+- A refused refresh answers **401** `SESSION_EXPIRED`, or `ACCOUNT_DISABLED` for a deactivated worker.
 
 The user is reloaded from the database on every request, so some changes take effect before the token expires:
 
 | Change | Effect on existing tokens |
 |---|---|
-| A worker is deactivated | Rejected immediately with **401** "This account is disabled" |
-| The user changes their password, or an admin or owner resets it | Every token issued before the change is rejected, which signs out other devices |
-| The user is deleted | Rejected immediately |
+| A worker is deactivated | Rejected immediately with **401** "This account is disabled", and every session ends |
+| The user changes their password, or an admin or owner resets it | Every token issued before the change is rejected and every session ends, which signs out other devices |
+| The user is deleted | Rejected immediately; the sessions go with the user |
 | The role or username changes | The token keeps working with the new values, because it identifies the user by id |
 
-HTTP Basic is no longer accepted. If it were, anyone holding a password could skip the one-hour limit.
+HTTP Basic is no longer accepted: only the login takes a password.
 
 **Failed logins are limited.** After 5 failed attempts for the same username from the same IP address within 15 minutes, `POST /api/auth/login` answers **429 Too Many Requests** with a `Retry-After` header (in seconds) until those 15 minutes are over, even if the password is right. A successful login clears the count. Each IP address also has its own limit, whatever the usernames: after 50 failed attempts within 15 minutes, every login from it answers 429 until those 15 minutes are over. A successful login does not clear that count. The counts are kept in memory, per instance, and reset on restart; failures that stay under the limits can't push a blocked username or address out of memory. Behind a reverse proxy, set `SERVER_FORWARD_HEADERS_STRATEGY=native` so the API sees the client's IP and not the proxy's; otherwise every client shares the proxy's address and its limit.
 
 | Setting | Environment variable | Default |
 |---|---|---|
 | Signing secret (at least 32 bytes) | `JWT_SECRET` | none, the app refuses to start without it |
-| Token lifetime (ISO-8601 duration) | `JWT_TTL` | `PT1H` |
+| Access token lifetime (ISO-8601 duration) | `JWT_TTL` | `PT1H` |
+| A session unused for this long ends | `SESSION_IDLE_TTL` | `P90D` |
+| Sessions (signed-in devices) per user | `SESSION_MAX_PER_USER` | `20` |
+| A replaced refresh token sent again within this time is a retry, not a theft | `SESSION_REUSE_GRACE` | `PT1M` |
 | Failed logins allowed per username and IP | `LOGIN_MAX_ATTEMPTS` | `5` |
 | Failed logins allowed per IP, whatever the usernames | `LOGIN_MAX_ATTEMPTS_PER_IP` | `50` |
 | Window for those failures (ISO-8601 duration) | `LOGIN_WINDOW` | `PT15M` |
@@ -652,17 +667,73 @@ Emails are sent asynchronously and only after the transaction commits, so a reje
 
 Resend is configured with `RESEND_API_KEY` (required) and `RESEND_FROM` (optional, defaults to `Khronos <onboarding@resend.dev>`). Calls to Resend give up after `RESEND_CONNECT_TIMEOUT` (default `PT5S`) to connect and `RESEND_READ_TIMEOUT` (default `PT10S`) to answer.
 
+## In-app notifications
+
+Every notification above is also kept in the worker's list in the app (the **Avisos** page), with an unread count on the menu. Unlike the email and the push, the notice is written **in the same transaction** as the change, just before it commits (`InboxNotificationWriter`): a saved change always has its notice, and a rejected request has none.
+
+The API keeps only the facts, so the app words them in the reader's language: `type` says what happened and `data` holds the details, in the venue's local time.
+
+| `type` | `data` |
+|---|---|
+| `ASSIGNED` | `{ "shifts": [shift], "events": [event] }`, each list by start |
+| `SHIFT_CHANGED` | `{ "before": shift, "after": shift }` |
+| `SHIFT_CANCELLED` | `{ "shift": shift }` |
+| `EVENT_CHANGED` | `{ "before": event, "after": event }` |
+| `EVENT_UNASSIGNED` | `{ "event": event, "reason": "EVENT_CANCELLED" \| "NO_COVERING_SHIFT" \| null }` |
+
+where a shift is `{ "date": "2030-05-10", "startTime": "18:00", "endTime": "02:00", "endsNextDay": true, "zone": "Bar" }` and an event `{ "title": "Wedding dinner", "dateTime": "2030-05-10T19:00", "zone": "Hall" }`.
+
+| Endpoint | Answer |
+|---|---|
+| `GET /api/notifications?limit=30&before={id}` | **200** `{ "items": [...], "unreadCount": 2, "hasMore": true }`. Newest first; each item is `{ "id", "type", "data", "createdAt", "readAt" }`, `readAt` null while unread. `limit` is 1 to 100 (default 30); for older ones, ask again with `before` = the last id |
+| `GET /api/notifications/unread-count` | **200** `{ "count": 2 }`, for the badge |
+| `POST /api/notifications/{id}/read` | **204**; reading it again keeps the first time |
+| `POST /api/notifications/read-all` | **204** |
+
+Each user only sees and marks their own: someone else's id answers **404**, as if it did not exist. Notices older than `NOTIFICATIONS_RETENTION` (default 90 days) are deleted every night at 04:00, and a user's go with their account.
+
+## Push notifications
+
+Every email above also goes as a push notification to each device where the worker turned them on (the app's Account page, see the frontend README). Same title as the email, a few plain lines of text (a long list ends in "and N more"), and a tap opens the app on the worker's list of notifications. Push is sent right after the email, on the same notification thread, so it has the same guarantees: only after commit, nothing for a rejected request, and a failure never fails the request. A failed email still sends the push.
+
+It is standard [Web Push](https://web.dev/articles/push-notifications-overview): the browser gives the app an endpoint on its push service (Google's for Chrome and Android, Apple's for Safari, Mozilla's, Microsoft's) and two keys; the API encrypts each message for that device (RFC 8291) and signs the request with its VAPID key (RFC 8292). Both are done with the JDK alone, in `notifications/WebPushCrypto` (checked against the RFC's own example), and `notifications/WebPushClient` posts the message.
+
+| Endpoint | Who | Answer |
+|---|---|---|
+| `GET /api/push-subscriptions/public-key` | Anyone signed in | **200** `{ "publicKey": "..." }` for the browser to subscribe with, or **204** when push is off on this server |
+| `PUT /api/push-subscriptions` | Workers | **204**. Body: the browser's `PushSubscription` as JSON, `{ "endpoint": "...", "keys": { "p256dh": "...", "auth": "..." } }`. The same endpoint again updates it; if it belonged to someone else, it moves to the caller. **400** for an endpoint that isn't https on a known push service, or keys that aren't a P-256 key and a 16-byte secret; **409** when push is off |
+| `DELETE /api/push-subscriptions?endpoint=...` | Anyone signed in | **204**. Removes the caller's own device; someone else's endpoint is left as it is |
+
+Rules:
+
+- **Only known push services.** The server posts to whatever endpoint a browser hands it, so it only accepts `https` endpoints whose host is in `PUSH_ALLOWED_HOSTS` (by default FCM, Mozilla, `*.push.apple.com` and `*.notify.windows.com`). Anything else would let a user make the server call an address of their choosing.
+- **Devices are forgotten** when the push service says one is gone (404 or 410: the app was uninstalled or the permission withdrawn), when the user changes their password or has it reset (they are signed out everywhere, so notifications stop too), when a worker is deactivated, and with their account. The app registers its device again on every sign-in where notifications were turned on, so a password change only stops them until the person signs in on that device.
+- At most 10 devices per user; registering one more drops the oldest.
+- Messages are kept by the push service for a phone that is off for `PUSH_TTL` (default one day). Calls to a push service give up after `PUSH_CONNECT_TIMEOUT` and `PUSH_READ_TIMEOUT` (`PT5S`, `PT10S`).
+
+**Setting it up.** Push is off until both VAPID keys are set; without them only emails go out and the app says notifications aren't available. Generate the pair once:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+and set `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY` and `PUSH_VAPID_SUBJECT` (a `mailto:` or `https:` contact the push services can reach). Keep the pair: changing it stops every device's notifications until each worker turns them on again. Keys that are set but invalid, or that don't belong together, stop the application at startup. Browsers only allow push on HTTPS, so it needs the app and the API deployed (or `localhost` in development).
+
+Workers' text is in English, as the emails are.
+
 ## API overview
 
 All endpoints are under `/api` and need a bearer token, except `POST /api/auth/login` and `GET /actuator/health`. The full interactive reference is in Swagger UI (see [Running locally](#running-locally)).
 
 | Resource | Base path | Notes |
 |---|---|---|
-| Auth | `/api/auth` | `POST /login` returns a token valid for one hour. |
+| Auth | `/api/auth` | `POST /login` returns an access token valid for one hour and a refresh token; `POST /refresh` swaps the refresh token for a new pair; `POST /logout` ends the device's session (see [Authentication](#authentication)). |
 | Users | `/api/users` | `GET /me` returns the logged-in user, with an owner's `plan`. `POST /create?role=...&plan=...` is for admins only. `GET /{id}/plan` and `PUT /{id}/plan` read and change an owner's plan (see [Plans](#plans)). `POST /create/worker` creates a user with the `WORKER` role. `PUT /{id}/password` changes the password and revokes the user's older tokens. `PUT /{id}/password/reset` lets an admin or owner set a new one. `GET /establishment/{id}` lists the accounts of an establishment's workers. |
 | Establishments | `/api/establishments` | You can also list them by owner: `/owner/{ownerId}`. |
 | Zones | `/api/zones` | You can also list them by establishment: `/establishment/{id}`. |
 | Workers | `/api/workers` | Identified by their user ID. You can list them by establishment. `POST /with-user` creates the account and links it in one step. `PUT /{id}/active` turns a worker on or off. |
+| Notifications | `/api/notifications` | The caller's in-app notifications, and marking them read (see [In-app notifications](#in-app-notifications)). |
+| Push subscriptions | `/api/push-subscriptions` | The caller's devices for push notifications (see [Push notifications](#push-notifications)). |
 | Worker shifts | `/api/worker-shifts` | `POST` takes a **list**. `POST /with-events` creates shifts and puts workers on events in one step. You can list shifts by owner, worker or zone. |
 | Events | `/api/events` | `POST` takes a **list**. You can list events by zone or establishment. |
 | Worker events | `/api/worker-events` | `POST` takes a **list** of worker/event pairs. You can list assignments by worker, event or establishment. |
@@ -780,6 +851,8 @@ Every error comes back in the same shape:
 
 `fieldErrors` only appears on validation errors.
 
+**Language.** `message` is always in English: it is what clients read and match, and its wording may change. The field messages in `fieldErrors` follow the request's `Accept-Language`: Spanish for `es`, English for `en`, for any other language and without the header (`WebConfig`). The standard constraints are worded by Hibernate Validator; the app's own ones (a phone number, a time zone, a password's length in bytes, a batch's size) and friendlier Spanish for the common ones are in `src/main/resources/ValidationMessages*.properties`. The checks that compare several fields of an inventory request (a product twice, a cost on a movement that is not a purchase) stay in English; the app words those itself.
+
 `code` only appears on the errors in the table below: the authentication errors, the cash closing and expense conflicts, the inventory conflicts and the refusals of the owner's plan. It is a stable value for clients to tell these cases apart, while the wording of `message` may change. Clients should treat a missing or unknown `code` like any other error with that status.
 
 ```json
@@ -879,11 +952,15 @@ Flyway owns the schema. The scripts are in `src/main/resources/db/migration` and
 - `V17` turns on row-level security on every table in `public` but Flyway's own `flyway_schema_history` (Flyway keeps it locked while migrating, so altering it would hang the start), with no policies, and takes away the privileges that Supabase grants by default to its `anon` and `authenticated` roles, on the existing tables and sequences and on future ones. Supabase serves the `public` tables over its own REST API to those roles; this API never uses it, so they must see nothing. The application isn't affected because it connects as the tables' owner, and an owner is not subject to its tables' RLS. ALTER TABLE needs the owner, so the migration fails without changing anything if some table belongs to another role. On plain PostgreSQL (tests, CI, docker compose) those roles don't exist and only the RLS part applies. Two consequences:
   - Every new table must turn RLS on in its own script (`alter table ... enable row level security`). Supabase's Security Advisor flags any public table without it.
   - If the application ever connects with a role that doesn't own the tables (for example to take away `TRUNCATE`, see [Known limits](#known-limits)), that role needs `BYPASSRLS` or policies of its own, or every table looks empty to it.
-- Any schema change goes in a new script, `V18__what_it_does.sql`, `V19__...`. Never edit a script that has already run anywhere.
+- `V18` adds `push_subscriptions`, the devices that get push notifications, with RLS on. It only adds a sequence, a table and indexes, so it runs on a database that already has data.
+- `V19` adds `refresh_sessions`, one row per signed-in device holding the hashes of its current and previous refresh token, with RLS on. It only adds a sequence, a table and indexes, so it runs on a database that already has data.
+- `V20` adds `notifications`, the in-app list, with RLS on. It only adds a sequence, a table and indexes, so it runs on a database that already has data.
+- `V21` makes `notifications.id` an identity column instead of taking ids from `notifications_seq` in blocks of 50, so every change that writes a notice runs the same statements every time (a block ran out one notice in fifty and cost an extra query). The ids already used are kept.
+- Any schema change goes in a new script, `V22__what_it_does.sql`, `V23__...`. Never edit a script that has already run anywhere.
 
 ### Tests
 
-The integration tests start the whole app against a real, **empty** PostgreSQL database given by `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, and empty every table before and after each test. Never point them at a database whose data you need: the app also reads `DB_URL` from `.env`, so override it as below. As a safety net the tests refuse to start, before migrating anything, unless the database name contains `test`. `JWT_SECRET` and `RESEND_API_KEY` must also be set (any values; no email is sent).
+The integration tests start the whole app against a real, **empty** PostgreSQL database given by `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, and empty every table before and after each test. Never point them at a database whose data you need: the app also reads `DB_URL` from `.env`, so override it as below. As a safety net the tests refuse to start, before migrating anything, unless the database name contains `test`. `JWT_SECRET` and `RESEND_API_KEY` must also be set (any values; no email is sent). Push is on in the tests, with a VAPID pair made for them in `application-test.properties`, and nothing is pushed: `WebPushClient` is mocked.
 
 ```bash
 docker run -d --name khronos-test-db -p 5433:5432 -e POSTGRES_USER=khronos -e POSTGRES_PASSWORD=khronos -e POSTGRES_DB=khronos_test postgres:16-alpine
@@ -902,7 +979,7 @@ src/main/java/com/moga/khronosdemo
 ├── dtos/          request/*RequestDTO (with validation) and response/*ResponseDTO, including CSV downloads
 ├── entities/      JPA entities and the Role enum
 ├── exceptions/    Domain exceptions and GlobalExceptionHandler
-├── notifications/ Notification events and the listener that emails workers
+├── notifications/ Notification events, the listener that emails workers and pushes to their devices, the one that keeps them in the in-app list, and Web Push (encryption, VAPID, sending)
 ├── mappers/       Conversions between entities and DTOs
 ├── repositories/  Spring Data JPA repositories, including the overlap and coverage queries
 ├── security/      SecurityConfig, JwtConfig, PasswordConfig, AccessGuard, the user-details service, plan checks,

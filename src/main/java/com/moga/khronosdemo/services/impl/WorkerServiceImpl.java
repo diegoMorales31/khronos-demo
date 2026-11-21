@@ -13,6 +13,8 @@ import com.moga.khronosdemo.exceptions.BusinessRuleException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;
 import com.moga.khronosdemo.mappers.WorkerMapper;
 import com.moga.khronosdemo.repositories.EstablishmentRepository;
+import com.moga.khronosdemo.repositories.PushSubscriptionRepository;
+import com.moga.khronosdemo.repositories.RefreshSessionRepository;
 import com.moga.khronosdemo.repositories.TimeEntryRepository;
 import com.moga.khronosdemo.repositories.UserRepository;
 import com.moga.khronosdemo.repositories.WorkerRepository;
@@ -34,11 +36,14 @@ public class WorkerServiceImpl implements WorkerService {
     private final UserService userService;
     private final TimeEntryRepository timeEntryRepository;
     private final PlanLimits planLimits;
+    private final PushSubscriptionRepository pushSubscriptionRepository;
+    private final RefreshSessionRepository refreshSessionRepository;
 
     public WorkerServiceImpl(WorkerRepository workerRepository, UserRepository userRepository,
                              EstablishmentRepository establishmentRepository, WorkerMapper workerMapper,
                              UserService userService, TimeEntryRepository timeEntryRepository,
-                             PlanLimits planLimits) {
+                             PlanLimits planLimits, PushSubscriptionRepository pushSubscriptionRepository,
+                             RefreshSessionRepository refreshSessionRepository) {
         this.workerRepository = workerRepository;
         this.userRepository = userRepository;
         this.establishmentRepository = establishmentRepository;
@@ -46,6 +51,8 @@ public class WorkerServiceImpl implements WorkerService {
         this.userService = userService;
         this.timeEntryRepository = timeEntryRepository;
         this.planLimits = planLimits;
+        this.pushSubscriptionRepository = pushSubscriptionRepository;
+        this.refreshSessionRepository = refreshSessionRepository;
     }
 
     @Override
@@ -149,6 +156,11 @@ public class WorkerServiceImpl implements WorkerService {
             planLimits.checkRoomForOneMore(worker.getEstablishment().getOwner().getId());
         }
         worker.setActive(active);
+        if (!active) {
+            // A deactivated worker can't sign in, and nothing should keep reaching their devices
+            refreshSessionRepository.deleteByUserId(userId);
+            pushSubscriptionRepository.deleteByUserId(userId);
+        }
         return workerMapper.toResponse(worker);
     }
 
