@@ -1,10 +1,13 @@
 package com.moga.khronosdemo.controllers;
 
-import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
+import com.moga.khronosdemo.dtos.request.PasswordChangeRequestDTO;
 import com.moga.khronosdemo.dtos.request.PasswordResetRequestDTO;
+import com.moga.khronosdemo.dtos.request.PlanRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
+import com.moga.khronosdemo.dtos.response.PlanResponseDTO;
 import com.moga.khronosdemo.dtos.response.UserResponseDTO;
+import com.moga.khronosdemo.entities.enums.Plan;
 import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.UserService;
@@ -34,9 +37,11 @@ public class UserController {
     @PostMapping("/create")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN')")
+    // plan is only for owners, and BASIC when left out
     public UserResponseDTO createUser(@Valid @RequestBody UserRequestDTO request, @RequestParam Role role,
+                                      @RequestParam(required = false) Plan plan,
                                       @AuthenticationPrincipal SecurityUser principal) {
-        return userService.createUser(request, role, principal.getId());
+        return userService.createUser(request, role, plan, principal.getId());
     }
 
     @PostMapping("/create/worker")
@@ -75,7 +80,7 @@ public class UserController {
     @PutMapping("/{id}/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("@access.isSelf(#id)")
-    public void changePassword(@PathVariable Long id, @Valid @RequestBody ChangePasswordRequestDTO request) {
+    public void changePassword(@PathVariable Long id, @Valid @RequestBody PasswordChangeRequestDTO request) {
         userService.changePassword(id, request);
     }
 
@@ -85,6 +90,20 @@ public class UserController {
     @PreAuthorize("(hasRole('PLATFORM_ADMIN') and !@access.isPlatformAdmin(#id)) or (hasRole('OWNER') and @access.ownsWorker(#id))")
     public void resetPassword(@PathVariable Long id, @Valid @RequestBody PasswordResetRequestDTO request) {
         userService.resetPassword(id, request);
+    }
+
+    // The owner's plan, its worker limit and how many active workers they have now
+    @GetMapping("/{id}/plan")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or (hasRole('OWNER') and @access.isSelf(#id))")
+    public PlanResponseDTO findPlan(@PathVariable Long id) {
+        return userService.findPlan(id);
+    }
+
+    // Only the platform admin changes plans; it applies from the owner's next request
+    @PutMapping("/{id}/plan")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
+    public PlanResponseDTO changePlan(@PathVariable Long id, @Valid @RequestBody PlanRequestDTO request) {
+        return userService.changePlan(id, request.plan());
     }
 
     @DeleteMapping("/{id}")

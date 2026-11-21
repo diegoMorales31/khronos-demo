@@ -2,6 +2,7 @@ package com.moga.khronosdemo.validation;
 
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
+import org.hibernate.validator.constraintvalidation.HibernateConstraintValidatorContext;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.util.Collection;
@@ -21,7 +22,9 @@ public class MaxBatchSizeValidator implements ConstraintValidator<MaxBatchSize, 
             return true;
         }
         context.disableDefaultConstraintViolation();
-        context.buildConstraintViolationWithTemplate("must not contain more than " + maxSize + " items")
+        context.unwrap(HibernateConstraintValidatorContext.class)
+                .addMessageParameter("max", maxSize)
+                .buildConstraintViolationWithTemplate("{khronos.validation.MaxBatchSize.message}")
                 .addConstraintViolation();
         return false;
     }

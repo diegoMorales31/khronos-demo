@@ -39,6 +39,6 @@ public class DatabaseUserDetailsService implements UserDetailsService {
         User user = found.getAccount();
         boolean enabled = !Boolean.FALSE.equals(found.getWorkerActive());
         return new SecurityUser(user.getId(), user.getUsername(), user.getPassword(), user.getRole(), enabled,
-                user.getCredentialsChangedAt());
+                user.getCredentialsChangedAt(), user.getPlan());
     }
 }

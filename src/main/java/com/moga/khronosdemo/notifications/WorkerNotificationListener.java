@@ -3,6 +3,7 @@ package com.moga.khronosdemo.notifications;
 import com.moga.khronosdemo.dtos.request.EmailRequestDTO;
 import com.moga.khronosdemo.exceptions.EmailDeliveryException;
 import com.moga.khronosdemo.services.EmailService;
+import com.moga.khronosdemo.services.PushService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -13,6 +14,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.stream.Collectors;
 
 import static org.springframework.web.util.HtmlUtils.htmlEscape;
@@ -24,10 +26,15 @@ public class WorkerNotificationListener {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm");
 
-    private final EmailService emailService;
+    // A push shows a few lines; the rest are summed up as "and N more"
+    private static final int PUSH_LINES = 3;
 
-    public WorkerNotificationListener(EmailService emailService) {
+    private final EmailService emailService;
+    private final PushService pushService;
+
+    public WorkerNotificationListener(EmailService emailService, PushService pushService) {
         this.emailService = emailService;
+        this.pushService = pushService;
     }
 
     @Async
@@ -52,7 +59,8 @@ public class WorkerNotificationListener {
             body.append("<p><strong>").append(events.size() == 1 ? "Event" : "Events").append("</strong></p>")
                     .append(assignedEventList(events));
         }
-        send(notification.recipient(), assignedSubject(shifts, events), body.toString());
+        List<String> lines = Stream.concat(shifts.stream().map(this::shiftLine), events.stream().map(this::eventLine)).toList();
+        send(notification.recipient(), assignedSubject(shifts, events), body.toString(), pushLines(lines));
     }
 
     @Async
@@ -62,7 +70,8 @@ public class WorkerNotificationListener {
                 "Your shift on " + notification.before().date().format(DATE) + " has changed",
                 "<p>One of your shifts has been changed.</p>"
                         + "<p><strong>Before:</strong></p>" + shiftList(notification.before())
-                        + "<p><strong>Now:</strong></p>" + shiftList(notification.after()));
+                        + "<p><strong>Now:</strong></p>" + shiftList(notification.after()),
+                "Now: " + shiftLine(notification.after()));
     }
 
     @Async
@@ -70,7 +79,8 @@ public class WorkerNotificationListener {
     public void onShiftCancelled(ShiftCancelledNotification notification) {
         send(notification.recipient(),
                 "Your shift on " + notification.shift().date().format(DATE) + " has been cancelled",
-                "<p>The following shift has been cancelled:</p>" + shiftList(notification.shift()));
+                "<p>The following shift has been cancelled:</p>" + shiftList(notification.shift()),
+                shiftLine(notification.shift()));
     }
 
     @Async
@@ -80,7 +90,8 @@ public class WorkerNotificationListener {
                 "The event " + notification.before().title() + " has changed",
                 "<p>An event you are assigned to has been changed.</p>"
                         + "<p><strong>Before:</strong></p>" + eventList(notification.before())
-                        + "<p><strong>Now:</strong></p>" + eventList(notification.after()));
+                        + "<p><strong>Now:</strong></p>" + eventList(notification.after()),
+                "Now: " + eventLine(notification.after()));
     }
 
     @Async
@@ -89,7 +100,8 @@ public class WorkerNotificationListener {
         String reason = notification.reason() != null ? "<p>" + htmlEscape(notification.reason()) + "</p>" : "";
         send(notification.recipient(),
                 "You are no longer assigned to " + notification.event().title(),
-                "<p>You are no longer assigned to the following event:</p>" + eventList(notification.event()) + reason);
+                "<p>You are no longer assigned to the following event:</p>" + eventList(notification.event()) + reason,
+                eventLine(notification.event()) + (notification.reason() != null ? "\n" + notification.reason() : ""));
     }
 
     private static String assignedSubject(List<ShiftDetails> shifts, List<EventDetails> events) {
@@ -164,12 +176,41 @@ public class WorkerNotificationListener {
                 event.description() != null ? htmlEscape(event.description()) : "-");
     }
 
-    private void send(Recipient recipient, String subject, String body) {
+    // Push text is plain, not HTML: "10/05/2030 · 18:00 - 02:00 (+1) · Bar"
+    private String shiftLine(ShiftDetails shift) {
+        return "%s · %s - %s%s · %s".formatted(
+                shift.date().format(DATE),
+                shift.startTime().format(TIME),
+                shift.endTime().format(TIME),
+                shift.endsNextDay() ? " (+1)" : "",
+                shift.zoneName());
+    }
+
+    // "10/05/2030 19:00 · Wedding dinner · Hall"
+    private String eventLine(EventDetails event) {
+        return "%s %s · %s · %s".formatted(
+                event.dateTime().format(DATE), event.dateTime().format(TIME), event.title(), event.zoneName());
+    }
+
+    private static String pushLines(List<String> lines) {
+        if (lines.size() <= PUSH_LINES) {
+            return String.join("\n", lines);
+        }
+        return String.join("\n", lines.subList(0, PUSH_LINES - 1)) + "\nand " + (lines.size() - PUSH_LINES + 1) + " more";
+    }
+
+    // The email, then a push to each of the worker's devices: a failed email still sends the push
+    private void send(Recipient recipient, String subject, String body, String pushBody) {
         String html = "<p>Hi " + htmlEscape(recipient.firstName()) + ",</p>" + body;
         try {
             emailService.send(new EmailRequestDTO(recipient.email(), subject, html));
         } catch (EmailDeliveryException ex) {
             log.warn("Notification to {} not delivered; recorded in email_logs", recipient.email());
+        }
+        try {
+            pushService.send(recipient.userId(), PushMessage.toNotifications(subject, pushBody));
+        } catch (RuntimeException ex) {
+            log.warn("Push notification to user {} not sent: {}", recipient.userId(), ex.getMessage());
         }
     }
 }

@@ -7,6 +7,7 @@ import com.moga.khronosdemo.exceptions.EmailDeliveryException;
 import com.moga.khronosdemo.mappers.EmailLogMapper;
 import com.moga.khronosdemo.repositories.EmailLogRepository;
 import com.moga.khronosdemo.services.EmailService;
+import com.moga.khronosdemo.services.PushService;
 import com.moga.khronosdemo.services.impl.EmailServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -29,7 +30,7 @@ import static org.mockito.Mockito.when;
 
 class NotificationDeliveryTests {
 
-    private static final Recipient LUCIA = new Recipient("lucia@example.test", "Lucia");
+    private static final Recipient LUCIA = new Recipient(7L, "lucia@example.test", "Lucia");
 
     private static ShiftDetails shift(int day, int startHour, int endHour, String zone) {
         return new ShiftDetails(LocalDate.of(2030, 5, day), LocalTime.of(startHour, 0), LocalTime.of(endHour, 0), zone);
@@ -48,7 +49,7 @@ class NotificationDeliveryTests {
     @Test
     void anEventWithoutADescriptionIsStillEmailed() {
         EmailService emailService = mock(EmailService.class);
-        new WorkerNotificationListener(emailService).onAssigned(
+        new WorkerNotificationListener(emailService, mock(PushService.class)).onAssigned(
                 new AssignmentsNotification(LUCIA, List.of(), List.of(event("Wedding dinner", 10, 19, null))));
 
         EmailRequestDTO email = onlyEmail(emailService);
@@ -60,7 +61,7 @@ class NotificationDeliveryTests {
     @Test
     void aShiftThatEndsAfterMidnightShowsItsEndOnTheNextDay() {
         EmailService emailService = mock(EmailService.class);
-        new WorkerNotificationListener(emailService).onAssigned(
+        new WorkerNotificationListener(emailService, mock(PushService.class)).onAssigned(
                 new AssignmentsNotification(LUCIA, List.of(shift(10, 18, 2, "Bar")), List.of()));
 
         EmailRequestDTO email = onlyEmail(emailService);
@@ -71,7 +72,7 @@ class NotificationDeliveryTests {
     @Test
     void severalShiftsGoInOneListInTheOrderTheyStart() {
         EmailService emailService = mock(EmailService.class);
-        new WorkerNotificationListener(emailService).onAssigned(new AssignmentsNotification(LUCIA,
+        new WorkerNotificationListener(emailService, mock(PushService.class)).onAssigned(new AssignmentsNotification(LUCIA,
                 List.of(shift(11, 10, 14, "Terrace"), shift(10, 18, 2, "Bar")), List.of()));
 
         EmailRequestDTO email = onlyEmail(emailService);
@@ -83,7 +84,7 @@ class NotificationDeliveryTests {
     @Test
     void severalEventsGoInOneListInDateOrder() {
         EmailService emailService = mock(EmailService.class);
-        new WorkerNotificationListener(emailService).onAssigned(new AssignmentsNotification(LUCIA, List.of(),
+        new WorkerNotificationListener(emailService, mock(PushService.class)).onAssigned(new AssignmentsNotification(LUCIA, List.of(),
                 List.of(event("Cocktails", 10, 22, "Bar service"), event("Wedding dinner", 10, 19, null))));
 
         EmailRequestDTO email = onlyEmail(emailService);
@@ -95,7 +96,7 @@ class NotificationDeliveryTests {
     @Test
     void shiftsAndEventsAssignedTogetherShareOneEmail() {
         EmailService emailService = mock(EmailService.class);
-        new WorkerNotificationListener(emailService).onAssigned(new AssignmentsNotification(LUCIA,
+        new WorkerNotificationListener(emailService, mock(PushService.class)).onAssigned(new AssignmentsNotification(LUCIA,
                 List.of(shift(10, 18, 23, "Hall")),
                 List.of(event("Cocktails", 10, 22, null), event("Wedding dinner", 10, 19, null))));
 

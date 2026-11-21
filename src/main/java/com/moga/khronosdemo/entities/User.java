@@ -1,5 +1,6 @@
 package com.moga.khronosdemo.entities;
 
+import com.moga.khronosdemo.entities.enums.Plan;
 import com.moga.khronosdemo.entities.enums.Role;
 import jakarta.persistence.*;
 import org.hibernate.annotations.OnDelete;
@@ -36,6 +37,11 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role = Role.WORKER;
+
+    // What the owner pays for; every owner has one and nobody else does (checked by the database)
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private Plan plan;
 
     // Tokens issued before this moment are rejected, so changing the password signs out other sessions
     private Instant credentialsChangedAt;
@@ -121,6 +127,14 @@ public class User {
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public Plan getPlan() {
+        return plan;
+    }
+
+    public void setPlan(Plan plan) {
+        this.plan = plan;
     }
 
     public Instant getCredentialsChangedAt() {

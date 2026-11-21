@@ -3,6 +3,8 @@ package com.moga.khronosdemo.controllers;
 import com.moga.khronosdemo.dtos.request.ExpenseRequestDTO;
 import com.moga.khronosdemo.dtos.response.ExpenseResponseDTO;
 import com.moga.khronosdemo.entities.enums.ExpenseCategory;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
+import com.moga.khronosdemo.security.RequiresPlan;
 import com.moga.khronosdemo.security.SecurityUser;
 import com.moga.khronosdemo.services.ExpenseService;
 import com.moga.khronosdemo.validation.OnCreate;
@@ -22,6 +24,7 @@ import java.util.List;
  * change them; workers never see them.
  */
 @RestController
+@RequiresPlan(PlanFeature.CASH)
 @RequestMapping("/api/expenses")
 public class ExpenseController {
 

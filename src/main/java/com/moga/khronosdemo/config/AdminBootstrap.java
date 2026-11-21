@@ -3,6 +3,7 @@ package com.moga.khronosdemo.config;
 import com.moga.khronosdemo.entities.User;
 import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.repositories.UserRepository;
+import com.moga.khronosdemo.security.PasswordConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -25,7 +26,7 @@ public class AdminBootstrap implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AdminBootstrap.class);
 
-    private static final int MIN_PASSWORD_LENGTH = 8;
+    private static final int MIN_PASSWORD_LENGTH = PasswordConfig.MIN_ADMIN_PASSWORD_LENGTH;
     // BCrypt only uses the first 72 bytes of a password
     private static final int MAX_PASSWORD_BYTES = 72;
 

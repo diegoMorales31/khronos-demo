@@ -72,6 +72,9 @@ class AdminBootstrapTests extends IntegrationTest {
     void refusesAPasswordTheApiWouldReject() {
         assertThrows(IllegalStateException.class,
                 () -> bootstrap("root", "short", "root@example.test").createAdminIfMissing());
+        // Enough for an owner or a worker, but not for an account that reaches every business
+        assertThrows(IllegalStateException.class,
+                () -> bootstrap("root", "x".repeat(15), "root@example.test").createAdminIfMissing());
         assertThrows(IllegalStateException.class,
                 () -> bootstrap("root", "x".repeat(73), "root@example.test").createAdminIfMissing());
 

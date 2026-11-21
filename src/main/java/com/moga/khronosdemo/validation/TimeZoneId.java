@@ -20,7 +20,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface TimeZoneId {
 
-    String message() default "must be an IANA time zone such as Europe/Madrid";
+    String message() default "{khronos.validation.TimeZoneId.message}";
 
     Class<?>[] groups() default {};
 

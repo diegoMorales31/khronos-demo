@@ -1,17 +1,12 @@
 package com.moga.khronosdemo.controllers;
 
 import com.moga.khronosdemo.dtos.request.LoginRequestDTO;
+import com.moga.khronosdemo.dtos.request.RefreshRequestDTO;
 import com.moga.khronosdemo.dtos.response.TokenResponseDTO;
-import com.moga.khronosdemo.exceptions.TooManyLoginAttemptsException;
-import com.moga.khronosdemo.security.LoginAttemptService;
-import com.moga.khronosdemo.security.SecurityUser;
-import com.moga.khronosdemo.security.TokenService;
+import com.moga.khronosdemo.services.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.AuthenticationException;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,37 +16,26 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final AuthenticationManager authenticationManager;
-    private final TokenService tokenService;
-    private final LoginAttemptService loginAttemptService;
+    private final AuthService authService;
 
-    public AuthController(AuthenticationManager authenticationManager, TokenService tokenService,
-                          LoginAttemptService loginAttemptService) {
-        this.authenticationManager = authenticationManager;
-        this.tokenService = tokenService;
-        this.loginAttemptService = loginAttemptService;
+    public AuthController(AuthService authService) {
+        this.authService = authService;
     }
 
     @PostMapping("/login")
     public TokenResponseDTO login(@Valid @RequestBody LoginRequestDTO request, HttpServletRequest httpRequest) {
-        String clientIp = httpRequest.getRemoteAddr();
+        return authService.login(request, httpRequest.getRemoteAddr());
+    }
 
-        // Checked before the password, so a blocked pair learns nothing even when the password is right
-        long retryAfter = loginAttemptService.secondsUntilAllowed(request.username(), clientIp);
-        if (retryAfter > 0) {
-            throw new TooManyLoginAttemptsException(retryAfter);
-        }
+    // No access token needed: the refresh token is the credential, and the access token has usually expired
+    @PostMapping("/refresh")
+    public TokenResponseDTO refresh(@Valid @RequestBody RefreshRequestDTO request) {
+        return authService.refresh(request);
+    }
 
-        Authentication authentication;
-        try {
-            authentication = authenticationManager.authenticate(
-                    UsernamePasswordAuthenticationToken.unauthenticated(request.username(), request.password()));
-        } catch (AuthenticationException ex) {
-            loginAttemptService.recordFailure(request.username(), clientIp);
-            throw ex;
-        }
-
-        loginAttemptService.recordSuccess(request.username(), clientIp);
-        return tokenService.issue((SecurityUser) authentication.getPrincipal());
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody RefreshRequestDTO request) {
+        authService.logout(request);
+        return ResponseEntity.noContent().build();
     }
 }

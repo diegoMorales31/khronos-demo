@@ -4,7 +4,7 @@ import com.moga.khronosdemo.validation.MaxBytes;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-public record ChangePasswordRequestDTO(
+public record PasswordChangeRequestDTO(
         @NotBlank @MaxBytes(72)
         String currentPassword,
 

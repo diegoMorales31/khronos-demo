@@ -9,6 +9,8 @@ import com.moga.khronosdemo.entities.Worker;
 import com.moga.khronosdemo.entities.WorkerEvent;
 import com.moga.khronosdemo.entities.WorkerShift;
 import com.moga.khronosdemo.entities.Zone;
+import com.moga.khronosdemo.notifications.WebPushClient;
+import com.moga.khronosdemo.entities.enums.Plan;
 import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.entities.enums.TimeEntrySource;
 import com.moga.khronosdemo.repositories.CashClosingChangeRepository;
@@ -144,6 +146,10 @@ public abstract class IntegrationTest {
     @MockitoBean
     protected EmailService emailService;
 
+    // No test talks to a real push service
+    @MockitoBean
+    protected WebPushClient webPushClient;
+
     @BeforeEach
     @AfterEach
     void useRealTime() {
@@ -168,11 +174,21 @@ public abstract class IntegrationTest {
         User user = new User(username, encodedPassword(), "First " + username, "Last " + username,
                 null, username + "@example.test");
         user.setRole(role);
+        // Every owner has a plan. ULTRA includes everything, so tests that are not about plans are never limited
+        if (role == Role.OWNER) {
+            user.setPlan(Plan.ULTRA);
+        }
         return userRepository.save(user);
     }
 
     protected User createOwner(String username) {
         return createUser(username, Role.OWNER);
+    }
+
+    protected User createOwner(String username, Plan plan) {
+        User owner = createUser(username, Role.OWNER);
+        owner.setPlan(plan);
+        return userRepository.save(owner);
     }
 
     protected User createAdmin(String username) {

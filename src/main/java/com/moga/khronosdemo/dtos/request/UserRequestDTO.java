@@ -19,7 +19,7 @@ public record UserRequestDTO(
         @NotBlank @Size(max = 100)
         String lastName,
 
-        @Pattern(regexp = "^\\+?[0-9 ]{6,20}$", message = "must be a valid phone number")
+        @Pattern(regexp = "^\\+?[0-9 ]{6,20}$", message = "{khronos.validation.phone}")
         String phoneNumber,
 
         @NotBlank @Email @Size(max = 255)

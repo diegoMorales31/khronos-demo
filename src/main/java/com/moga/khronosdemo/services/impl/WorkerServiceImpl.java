@@ -13,6 +13,8 @@ import com.moga.khronosdemo.exceptions.BusinessRuleException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;
 import com.moga.khronosdemo.mappers.WorkerMapper;
 import com.moga.khronosdemo.repositories.EstablishmentRepository;
+import com.moga.khronosdemo.repositories.PushSubscriptionRepository;
+import com.moga.khronosdemo.repositories.RefreshSessionRepository;
 import com.moga.khronosdemo.repositories.TimeEntryRepository;
 import com.moga.khronosdemo.repositories.UserRepository;
 import com.moga.khronosdemo.repositories.WorkerRepository;
@@ -33,16 +35,24 @@ public class WorkerServiceImpl implements WorkerService {
     private final WorkerMapper workerMapper;
     private final UserService userService;
     private final TimeEntryRepository timeEntryRepository;
+    private final PlanLimits planLimits;
+    private final PushSubscriptionRepository pushSubscriptionRepository;
+    private final RefreshSessionRepository refreshSessionRepository;
 
     public WorkerServiceImpl(WorkerRepository workerRepository, UserRepository userRepository,
                              EstablishmentRepository establishmentRepository, WorkerMapper workerMapper,
-                             UserService userService, TimeEntryRepository timeEntryRepository) {
+                             UserService userService, TimeEntryRepository timeEntryRepository,
+                             PlanLimits planLimits, PushSubscriptionRepository pushSubscriptionRepository,
+                             RefreshSessionRepository refreshSessionRepository) {
         this.workerRepository = workerRepository;
         this.userRepository = userRepository;
         this.establishmentRepository = establishmentRepository;
         this.workerMapper = workerMapper;
         this.userService = userService;
         this.timeEntryRepository = timeEntryRepository;
+        this.planLimits = planLimits;
+        this.pushSubscriptionRepository = pushSubscriptionRepository;
+        this.refreshSessionRepository = refreshSessionRepository;
     }
 
     @Override
@@ -55,15 +65,22 @@ public class WorkerServiceImpl implements WorkerService {
         if (user.getRole() != Role.WORKER) {
             throw new BusinessRuleException("Only users with the WORKER role can be registered as workers");
         }
-        Worker worker = workerMapper.toEntity(request, user, getEstablishment(request.establishmentId()));
+        Establishment establishment = getEstablishment(request.establishmentId());
+        if (Boolean.TRUE.equals(request.isActive())) {
+            planLimits.checkRoomForOneMore(establishment.getOwner().getId());
+        }
+        Worker worker = workerMapper.toEntity(request, user, establishment);
         return workerMapper.toResponse(workerRepository.save(worker));
     }
 
-    // The account and its link share this transaction, so if linking fails no account is left behind
+    // The account and its link share this transaction, so if linking fails no account is left behind.
+    // A new worker is active, so the owner's plan must have room for one more first
     @Override
     public WorkerWithUserResponseDTO createWithUser(WorkerWithUserRequestDTO request, Long creatorId) {
+        Establishment establishment = getEstablishment(request.establishmentId());
+        planLimits.checkRoomForOneMore(establishment.getOwner().getId());
         UserResponseDTO user = userService.createWorker(request.user(), creatorId);
-        Worker worker = new Worker(userRepository.getReferenceById(user.id()), getEstablishment(request.establishmentId()));
+        Worker worker = new Worker(userRepository.getReferenceById(user.id()), establishment);
         return new WorkerWithUserResponseDTO(user, workerMapper.toResponse(workerRepository.save(worker)));
     }
 
@@ -101,7 +118,13 @@ public class WorkerServiceImpl implements WorkerService {
         if (changesEstablishment && timeEntryRepository.existsByWorker_UserId(userId)) {
             throw new BusinessRuleException("Cannot move a worker with time entries to another establishment");
         }
-        workerMapper.updateEntity(worker, request, getEstablishment(request.establishmentId()));
+        Establishment target = getEstablishment(request.establishmentId());
+        Long targetOwnerId = target.getOwner().getId();
+        boolean joinsOwner = !worker.getActive() || !worker.getEstablishment().getOwner().getId().equals(targetOwnerId);
+        if (Boolean.TRUE.equals(request.isActive()) && joinsOwner) {
+            planLimits.checkRoomForOneMore(targetOwnerId);
+        }
+        workerMapper.updateEntity(worker, request, target);
         return workerMapper.toResponse(worker);
     }
 
@@ -122,13 +145,22 @@ public class WorkerServiceImpl implements WorkerService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
 
-        getWorker(user.getId()).setActive(!getWorker(user.getId()).getActive().equals(true));
+        setActive(user.getId(), !getWorker(user.getId()).getActive().equals(true));
     }
 
+    // Reactivating someone counts against the plan again; deactivating always works
     @Override
     public WorkerResponseDTO setActive(Long userId, boolean active) {
         Worker worker = getWorker(userId);
+        if (active && !worker.getActive()) {
+            planLimits.checkRoomForOneMore(worker.getEstablishment().getOwner().getId());
+        }
         worker.setActive(active);
+        if (!active) {
+            // A deactivated worker can't sign in, and nothing should keep reaching their devices
+            refreshSessionRepository.deleteByUserId(userId);
+            pushSubscriptionRepository.deleteByUserId(userId);
+        }
         return workerMapper.toResponse(worker);
     }
 

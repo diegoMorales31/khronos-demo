@@ -3,7 +3,8 @@ package com.moga.khronosdemo.dtos.response;
 /**
  * Stable reason sent as "code" in some error responses, so clients can tell these cases apart without
  * reading the message, whose wording may change. Responses for any other error leave the field out.
- * A 409 gets one, and the details that go with it, through BusinessRuleException.
+ * A 409 gets one, and the details that go with it, through BusinessRuleException; the 403 of a feature
+ * outside the owner's plan through PlanFeatureUnavailableException.
  */
 public enum ErrorCode {
 
@@ -86,5 +87,18 @@ public enum ErrorCode {
      * 409 when an expense created by receiving a purchase order is edited; details.purchaseOrderId is that
      * order. Such an expense can only be deleted, and entered again by hand if it needs correcting.
      */
-    EXPENSE_FROM_PURCHASE_ORDER
+    EXPENSE_FROM_PURCHASE_ORDER,
+
+    /**
+     * 409 when a worker would be added or reactivated past the active workers the owner's plan allows,
+     * or an owner is moved to a plan that allows fewer than they have; details.plan, details.maxActiveWorkers
+     * and details.activeWorkers say which plan and how many.
+     */
+    WORKER_LIMIT_REACHED,
+
+    /**
+     * 403 when an owner calls an endpoint of a feature their plan does not include; details.feature is
+     * CASH or INVENTORY and details.plan the owner's plan.
+     */
+    PLAN_FEATURE_UNAVAILABLE
 }

@@ -2,6 +2,7 @@ package com.moga.khronosdemo.security;
 
 import com.moga.khronosdemo.dtos.response.TokenResponseDTO;
 import com.moga.khronosdemo.entities.enums.Role;
+import com.moga.khronosdemo.security.impl.TokenServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.authentication.CredentialsExpiredException;
@@ -32,7 +33,7 @@ class TokenFlowTests {
 
     private TokenService tokenService(String secret, Duration ttl) {
         SecretKey key = config.jwtSigningKey(new JwtProperties(secret, ttl));
-        return new TokenService(config.jwtEncoder(key), new JwtProperties(secret, ttl));
+        return new TokenServiceImpl(config.jwtEncoder(key), new JwtProperties(secret, ttl));
     }
 
     private JwtDecoder decoder() {

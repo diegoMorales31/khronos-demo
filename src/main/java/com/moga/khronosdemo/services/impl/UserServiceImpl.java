@@ -1,30 +1,39 @@
 package com.moga.khronosdemo.services.impl;
 
-import com.moga.khronosdemo.dtos.request.ChangePasswordRequestDTO;
+import com.moga.khronosdemo.dtos.request.PasswordChangeRequestDTO;
 import com.moga.khronosdemo.dtos.request.PasswordResetRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserRequestDTO;
 import com.moga.khronosdemo.dtos.request.UserUpdateRequestDTO;
+import com.moga.khronosdemo.dtos.response.PlanResponseDTO;
 import com.moga.khronosdemo.dtos.response.UserResponseDTO;
+import com.moga.khronosdemo.entities.enums.Plan;
+import com.moga.khronosdemo.entities.enums.PlanFeature;
 import com.moga.khronosdemo.entities.enums.Role;
 import com.moga.khronosdemo.entities.User;
 import com.moga.khronosdemo.exceptions.BusinessRuleException;
+import com.moga.khronosdemo.exceptions.InvalidRequestException;
 import com.moga.khronosdemo.exceptions.ResourceNotFoundException;
 import com.moga.khronosdemo.mappers.UserMapper;
 import com.moga.khronosdemo.repositories.CashClosingRepository;
 import com.moga.khronosdemo.repositories.EstablishmentRepository;
 import com.moga.khronosdemo.repositories.ExpenseRepository;
 import com.moga.khronosdemo.repositories.PurchaseOrderRepository;
+import com.moga.khronosdemo.repositories.PushSubscriptionRepository;
+import com.moga.khronosdemo.repositories.RefreshSessionRepository;
 import com.moga.khronosdemo.repositories.StockMovementRepository;
 import com.moga.khronosdemo.repositories.TimeEntryRepository;
 import com.moga.khronosdemo.repositories.UserRepository;
 import com.moga.khronosdemo.repositories.WorkerRepository;
+import com.moga.khronosdemo.security.PasswordConfig;
 import com.moga.khronosdemo.services.UserService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Transactional
@@ -38,15 +47,20 @@ public class UserServiceImpl implements UserService {
     private final ExpenseRepository expenseRepository;
     private final StockMovementRepository stockMovementRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
+    private final PushSubscriptionRepository pushSubscriptionRepository;
+    private final RefreshSessionRepository refreshSessionRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final PlanLimits planLimits;
 
     public UserServiceImpl(UserRepository userRepository, WorkerRepository workerRepository,
                            EstablishmentRepository establishmentRepository, TimeEntryRepository timeEntryRepository,
                            CashClosingRepository cashClosingRepository, ExpenseRepository expenseRepository,
                            StockMovementRepository stockMovementRepository,
-                           PurchaseOrderRepository purchaseOrderRepository, UserMapper userMapper,
-                           PasswordEncoder passwordEncoder) {
+                           PurchaseOrderRepository purchaseOrderRepository,
+                           PushSubscriptionRepository pushSubscriptionRepository,
+                           RefreshSessionRepository refreshSessionRepository, UserMapper userMapper,
+                           PasswordEncoder passwordEncoder, PlanLimits planLimits) {
         this.userRepository = userRepository;
         this.workerRepository = workerRepository;
         this.establishmentRepository = establishmentRepository;
@@ -55,21 +69,30 @@ public class UserServiceImpl implements UserService {
         this.expenseRepository = expenseRepository;
         this.stockMovementRepository = stockMovementRepository;
         this.purchaseOrderRepository = purchaseOrderRepository;
+        this.pushSubscriptionRepository = pushSubscriptionRepository;
+        this.refreshSessionRepository = refreshSessionRepository;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
+        this.planLimits = planLimits;
     }
 
     @Override
-    public UserResponseDTO createUser(UserRequestDTO request, Role role, Long creatorId) {
-        return createWithRole(request, role, creatorId);
+    public UserResponseDTO createUser(UserRequestDTO request, Role role, Plan plan, Long creatorId) {
+        if (plan != null && role != Role.OWNER) {
+            throw new InvalidRequestException("Only owners have a plan");
+        }
+        if (role == Role.PLATFORM_ADMIN) {
+            checkAdminPassword(request.password(), "password");
+        }
+        return createWithRole(request, role, role == Role.OWNER && plan == null ? Plan.BASIC : plan, creatorId);
     }
 
     @Override
     public UserResponseDTO createWorker(UserRequestDTO request, Long creatorId) {
-        return createWithRole(request, Role.WORKER, creatorId);
+        return createWithRole(request, Role.WORKER, null, creatorId);
     }
 
-    private UserResponseDTO createWithRole(UserRequestDTO request, Role role, Long creatorId) {
+    private UserResponseDTO createWithRole(UserRequestDTO request, Role role, Plan plan, Long creatorId) {
 
         if (userRepository.existsByUsername(request.username())) {
             throw new BusinessRuleException("Username already in use");
@@ -84,6 +107,7 @@ public class UserServiceImpl implements UserService {
         }
 
         User user = userMapper.toEntity(request, role);
+        user.setPlan(plan);
         if (creatorId != null) {
             user.setCreatedBy(userRepository.getReferenceById(creatorId));
         }
@@ -127,26 +151,35 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void changePassword(Long id, ChangePasswordRequestDTO request) {
+    public void changePassword(Long id, PasswordChangeRequestDTO request) {
 
         User user = getUser(id);
 
         if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
             throw new BusinessRuleException("Current password is incorrect");
         }
+        if (user.getRole() == Role.PLATFORM_ADMIN) {
+            checkAdminPassword(request.newPassword(), "newPassword");
+        }
 
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         user.setCredentialsChangedAt(Instant.now());
+        // Signed out everywhere: every session ends, and notifications stop until the user signs in on each device again
+        refreshSessionRepository.deleteByUserId(id);
+        pushSubscriptionRepository.deleteByUserId(id);
 
     }
 
     // Set by an admin or the worker's owner, so there is no current password to check. As with
-    // changePassword, every token issued before the reset stops working.
+    // changePassword, every token issued before the reset stops working, every session ends and every device
+    // stops getting pushes.
     @Override
     public void resetPassword(Long id, PasswordResetRequestDTO request) {
         User user = getUser(id);
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         user.setCredentialsChangedAt(Instant.now());
+        refreshSessionRepository.deleteByUserId(id);
+        pushSubscriptionRepository.deleteByUserId(id);
     }
 
     // Deleting an owner deletes their establishments, and deleting a worker's account deletes the worker,
@@ -193,8 +226,46 @@ public class UserServiceImpl implements UserService {
 
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public PlanResponseDTO findPlan(Long ownerId) {
+        User owner = getOwner(ownerId);
+        return toPlanResponse(owner.getPlan(), workerRepository.countActiveByOwner(ownerId));
+    }
+
+    // Moving to a smaller plan keeps the data of the features it leaves out, which come back with a
+    // bigger plan, but the owner's active workers must fit the new limit
+    @Override
+    public PlanResponseDTO changePlan(Long ownerId, Plan plan) {
+        User owner = getOwner(ownerId);
+        planLimits.checkFits(ownerId, plan);
+        owner.setPlan(plan);
+        return toPlanResponse(plan, workerRepository.countActiveByOwner(ownerId));
+    }
+
+    private User getOwner(Long id) {
+        User user = getUser(id);
+        if (user.getRole() != Role.OWNER) {
+            throw new BusinessRuleException("Only owners have a plan");
+        }
+        return user;
+    }
+
+    private static PlanResponseDTO toPlanResponse(Plan plan, long activeWorkers) {
+        List<PlanFeature> features = Arrays.stream(PlanFeature.values()).filter(plan::includes).toList();
+        return new PlanResponseDTO(plan, plan.getMaxActiveWorkers(), activeWorkers, features);
+    }
+
     private User getUser(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
+    }
+
+    // Sent as a failed validation of the field, like the 8-character minimum everyone else gets
+    private static void checkAdminPassword(String password, String field) {
+        if (password.length() < PasswordConfig.MIN_ADMIN_PASSWORD_LENGTH) {
+            throw new InvalidRequestException("Validation failed", Map.of(field,
+                    "a platform admin's password must be at least " + PasswordConfig.MIN_ADMIN_PASSWORD_LENGTH + " characters long"));
+        }
     }
 }
